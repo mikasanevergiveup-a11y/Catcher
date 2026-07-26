@@ -12,7 +12,7 @@ API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 # စာလက်ခံမည့် Group ID (၃) ခု
-SPAWN_GROUPS = [-1003067509608, -1001947407820, -1003854698282]
+SPAWN_GROUPS = [-1003854698282, -1001947407820 ]
 
 # Forward လုပ်ရမည့် Checker Bot ID
 CHECKER_BOT_ID = 8506436817
