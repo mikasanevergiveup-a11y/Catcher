@@ -11,12 +11,6 @@ API_ID = int(os.environ.get("API_ID", "38612444"))
 API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
-# စာလက်ခံမည့် Group ID (၃) ခု
-SPAWN_GROUPS = [-1003854698282, -1001947407820, -1003067509608]
-
-# Card Bot ၃ ခု၏ ID များ
-CARD_BOT_IDS = [6157455819, 5934263177, 6212414747]
-
 # Forward လုပ်ရမည့် Checker Bot ID
 CHECKER_BOT_ID = 8506436817
 
@@ -45,7 +39,7 @@ def ping_self():
         url = os.environ.get("RENDER_EXTERNAL_URL", "")
         if url:
             try:
-                res = requests.get(f"{url}/health", timeout=10)
+                requests.get(f"{url}/health", timeout=10)
             except Exception:
                 pass
         time.sleep(50)
@@ -53,26 +47,25 @@ def ping_self():
 # Pyrogram Client Setup
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-@pyrogram_app.on_message(filters.chat(SPAWN_GROUPS))
+# အဓိကပြင်ဆင်ချက်: Group ID သတ်မှတ်စရာမလိုတော့ဘဲ Group မှန်သမျှ (filters.group) က ပုံပါသော (filters.photo) စာတိုင်းကို ဖတ်မည်
+@pyrogram_app.on_message(filters.group & filters.photo)
 async def on_spawn_message(client, message):
-    text = (message.text or message.caption or "").lower()
+    text = (message.caption or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    sender_id = message.from_user.id if message.from_user else (message.sender_chat.id if message.sender_chat else None)
-    
-    is_card_bot = sender_id in CARD_BOT_IDS
+    # Spawn သို့မဟုတ် Waifu စာသားများ ပါ/မပါ စစ်ဆေးခြင်း
     has_spawn_keywords = any(kw in text for kw in ["spawn", "appeared", "harem", "waifu", "grab", "catch"])
 
-    # အဓိကပြင်ဆင်ချက်: ပုံ(Photo) မပါရင် လုံးဝ အလုပ်မလုပ်စေရ!
-    if message.photo and (is_card_bot or has_spawn_keywords):
+    if has_spawn_keywords:
         print(f"\n----------------------------------------")
-        print(f"📌 [{group_name}] မှ Spawn ပုံ လက်ခံရရှိပါသည် (Sender ID: {sender_id})")
+        print(f"📌 [{group_name}] မှ Spawn ပုံ လက်ခံရရှိပါသည်!")
         print(f"🔄 Checker Bot သို့ forward လုပ်နေပါသည်...")
         try:
             fwd_msg = await message.forward(CHECKER_BOT_ID)
             forwarded_messages[fwd_msg.id] = (message.chat.id, group_name)
             print(f"✅ Forward လုပ်ပြီးပါပြီ။")
         except Exception as e:
+            # တချို့ Group များတွင် Forward လုပ်ခွင့် ပိတ်ထားပါက Error တက်နိုင်သည်
             print(f"❌ Forward Error: {e}")
 
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
@@ -106,7 +99,7 @@ async def on_checker_reply(client, message):
     if catch_cmd and target_group:
         print(f"📤 [{group_name}] သို့ '{catch_cmd}' လို့ပို့ပြီးပါပြီ...")
         try:
-            sent_msg = await client.send_message(target_group, catch_cmd)
+            await client.send_message(target_group, catch_cmd)
             print(f"🎉 Card ရရှိပါသည် (သို့မဟုတ် ပို့ပြီးပါပြီ)!")
             if message.reply_to_message and message.reply_to_message.id in forwarded_messages:
                 del forwarded_messages[message.reply_to_message.id]
@@ -115,12 +108,10 @@ async def on_checker_reply(client, message):
         print(f"----------------------------------------\n")
 
 if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
+    threading.Thread(target=run_flask, daemon=True).start()
     print("✅ Flask Server စတင်လိုက်ပါပြီ။")
 
-    ping_thread = threading.Thread(target=ping_self, daemon=True)
-    ping_thread.start()
+    threading.Thread(target=ping_self, daemon=True).start()
     print("✅ 50s Self-ping စနစ် စတင်လိုက်ပါပြီ။")
 
     print("🤖 Userbot စတင် အလုပ်လုပ်နေပါပြီ...")
