@@ -54,7 +54,6 @@ async def on_spawn_message(client, message):
         chat_id = message.chat.id
         text = (message.text or message.caption or "").lower()
         
-        # Bot အမျိုးအစားအမျိုးမျိုး၏ Spawn စာသားများကို စစ်ဆေးခြင်း
         spawn_keywords = [
             "appeared", "spawned", "character", "harem", "guess", 
             "catch", "grab", "waifu", "husbando", "hurry"
@@ -80,19 +79,18 @@ async def on_checker_reply(client, message):
         
         cmd_to_send = None
         
-        # 1. Checker မှ /catch, /guess, /grab စသည်တို့ တိုက်ရိုက်ပါလာပါက ယူမည်
-        match_cmd = re.search(r"((?:/catch|/guess|/grab|/hunt|/collect)\s+[^\n]+)", msg_text, re.IGNORECASE)
+        # 1. စာသားထဲတွင် /catch, /grab, /guess စသည်တို့ပါဝင်သော Command အပြည့်အစုံကို ရှာမည် (သင်္ကေတများပါ ခွင့်ပြုသည်)
+        match_cmd = re.search(r"((?:/catch|/grab|/guess|/hunt|/collect)\s+[^\n]+)", msg_text, re.IGNORECASE)
         if match_cmd:
             cmd_to_send = match_cmd.group(1).strip()
         else:
-            # 2. Full:, Name:, Hint: စသည့် စာသားများနောက်မှ အဖြေကို ဖြတ်ထုတ်မည်
+            # 2. Full:, Name:, Hint: စသည်တို့နောက်တွင် ပါလာသောတန်ဖိုးကို ဖြတ်ထုတ်မည်
             match_alt = re.search(r"(?:Full|Name|Character|Result|Hint)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
             if match_alt:
                 raw_val = match_alt.group(1).strip()
                 if raw_val.startswith("/") or raw_val.startswith("!"):
                     cmd_to_send = raw_val
                 else:
-                    # Bot ပုံစံပေါ်မူတည်၍ သင့်တော်သည့် command ကို သုံးမည်
                     text_lower = msg_text.lower()
                     if "grab" in text_lower:
                         prefix = "/grab"
@@ -107,7 +105,7 @@ async def on_checker_reply(client, message):
                     if clean_text.startswith("/") or clean_text.startswith("!"):
                         cmd_to_send = clean_text
                     else:
-                        cmd_to_send = f"/grab {clean_text}"
+                        cmd_to_send = f"/catch {clean_text}"
 
         if cmd_to_send and pending_groups:
             target_group = pending_groups.pop(0)
@@ -135,4 +133,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=ping_self, daemon=True).start()
     main()
-
+    
