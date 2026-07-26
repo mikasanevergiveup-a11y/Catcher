@@ -14,7 +14,7 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 # Forward လုပ်ရမည့် Checker Bot ID
 CHECKER_BOT_ID = 8506436817
 
-# Forward လုပ်ထားသော မက်ဆေ့ခ်ျ ID နှင့် Group ID ကို မှတ်သားမည့် Dictionary
+# Forward လုပ်ထားသော/Copy လုပ်ထားသော မက်ဆေ့ခ်ျ ID နှင့် Group ID ကို မှတ်သားမည့် Dictionary
 forwarded_messages = {}
 
 # Flask App (Render Web Service အတွက်)
@@ -47,26 +47,35 @@ def ping_self():
 # Pyrogram Client Setup
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# အဓိကပြင်ဆင်ချက်: Group ID သတ်မှတ်စရာမလိုတော့ဘဲ Group မှန်သမျှ (filters.group) က ပုံပါသော (filters.photo) စာတိုင်းကို ဖတ်မည်
-@pyrogram_app.on_message(filters.group & filters.photo)
+# Checker Bot မဟုတ်သော အခြားနေရာအားလုံးမှ ဝင်လာသော 'ပုံ' များကို စစ်ဆေးမည်
+@pyrogram_app.on_message(filters.photo & ~filters.chat(CHECKER_BOT_ID))
 async def on_spawn_message(client, message):
     text = (message.caption or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    # Spawn သို့မဟုတ် Waifu စာသားများ ပါ/မပါ စစ်ဆေးခြင်း
-    has_spawn_keywords = any(kw in text for kw in ["spawn", "appeared", "harem", "waifu", "grab", "catch"])
+    # Husbando ကိုပါ ထပ်ထည့်ထားပါသည်
+    has_spawn_keywords = any(kw in text for kw in ["spawn", "appeared", "harem", "waifu", "husbando", "grab", "catch"])
 
     if has_spawn_keywords:
         print(f"\n----------------------------------------")
-        print(f"📌 [{group_name}] မှ Spawn ပုံ လက်ခံရရှိပါသည်!")
+        print(f"📌 [{group_name}] မှ Spawn/Husbando ပုံ လက်ခံရရှိပါသည်!")
         print(f"🔄 Checker Bot သို့ forward လုပ်နေပါသည်...")
         try:
+            # ပထမနည်း - ပုံမှန်အတိုင်း Forward လုပ်ကြည့်မည်
             fwd_msg = await message.forward(CHECKER_BOT_ID)
             forwarded_messages[fwd_msg.id] = (message.chat.id, group_name)
             print(f"✅ Forward လုပ်ပြီးပါပြီ။")
         except Exception as e:
-            # တချို့ Group များတွင် Forward လုပ်ခွင့် ပိတ်ထားပါက Error တက်နိုင်သည်
-            print(f"❌ Forward Error: {e}")
+            # Group မှ Forward လုပ်ခွင့် ပိတ်ထားပါက ဤနေရာသို့ ရောက်မည်
+            print(f"⚠️ Forward Error (ပိတ်ထားပုံရသည်): {e}")
+            print(f"🔄 Forward အစား ပုံကို Copy ကူး၍ ပို့နေပါသည်...")
+            try:
+                # ဒုတိယနည်း - ပုံကို Copy ကူး၍ Checker Bot ထံ တိုက်ရိုက်ပို့မည်
+                copy_msg = await message.copy(CHECKER_BOT_ID)
+                forwarded_messages[copy_msg.id] = (message.chat.id, group_name)
+                print(f"✅ Copy ကူး၍ ပို့ပြီးပါပြီ။")
+            except Exception as ex:
+                print(f"❌ Copy လုပ်၍လည်း မရပါ: {ex}")
 
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
@@ -75,11 +84,13 @@ async def on_checker_reply(client, message):
     target_group = None
     group_name = "Unknown Group"
     
+    # Checker Bot မှ Reply ပြန်လာသော မက်ဆေ့ခ်ျကို အခြေခံ၍ မူလ Group ကို ရှာမည်
     if message.reply_to_message:
         data = forwarded_messages.get(message.reply_to_message.id)
         if data:
             target_group, group_name = data
 
+    # မတွေ့ပါက နောက်ဆုံးဝင်ထားသော Group သို့ ပို့မည်
     if not target_group and forwarded_messages:
         target_group, group_name = list(forwarded_messages.values())[-1]
 
