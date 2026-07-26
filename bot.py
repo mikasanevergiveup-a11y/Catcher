@@ -34,7 +34,10 @@ TARGET_CHATS = [-1004295330651, -1003315850707, -1003854698282]
 ADMIN_USER_ID = 8506436817
 
 # Telethon Client ကို Session String ဖြင့် စတင်ခြင်း
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+# Session String မှာ နေရာလွတ်များ ပါပါက ဖယ်ရှားရန် strip() ကို သုံးခြင်း
+clean_session = SESSION_STRING.strip() if SESSION_STRING else ""
+client = TelegramClient(StringSession(clean_session), API_ID, API_HASH)
+
 
 # ---------------------------------------------------------
 # FLASK KEEP-ALIVE SERVER (Render Web Service အတွက်)
