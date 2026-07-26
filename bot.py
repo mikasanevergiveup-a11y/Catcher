@@ -13,7 +13,6 @@ CHECKER_BOT_ID = 8506436817
 
 pending_groups = []
 
-# Flask Web Server Setup (Render မအိပ်စေရန်)
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
@@ -39,7 +38,6 @@ def ping_self():
                 pass
         time.sleep(50)
 
-# Pyrogram Userbot Setup
 pyrogram_app = Client(
     "autocatch_userbot",
     api_id=API_ID,
@@ -118,12 +116,7 @@ def main():
     pyrogram_app.stop()
 
 if __name__ == "__main__":
-    # 1. Flask ကို background thread ဖြင့် Run မည်
     threading.Thread(target=run_flask, daemon=True).start()
-    # 2. Render ကို အိပ်မသွားစေရန် self-ping လုပ်မည်
     threading.Thread(target=ping_self, daemon=True).start()
-    # 3. Pyrogram Userbot ကို ပင်မ thread တွင် Run မည်
     main()
-    if __name__ == "__main__":
-    asyncio.run(main())
-
+    
