@@ -56,9 +56,10 @@ pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, ses
 @pyrogram_app.on_message(filters.chat(SPAWN_GROUPS))
 async def on_spawn_message(client, message):
     text = (message.text or message.caption or "").lower()
-    # Chat ထဲသို့ Spawn/Character ရောက်လာပါက Checker Bot သို့ Forward လုပ်မည်
-    if message.photo or "spawned" in text or "appeared" in text or "harem" in text:
-        print(f"📥 Group [{message.chat.id}] တွင် Spawn တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေသည်...")
+    
+    # Bot နှစ်မျိုးစလုံးရဲ့ Spawn / Waifu ထွက်လာသည့် ပုံစံများကို စစ်ဆေးခြင်း
+    if message.photo and any(keyword in text for keyword in ["spawn", "appeared", "harem", "waifu", "grab", "catch"]):
+        print(f"📥 Group [{message.chat.id}] တွင် Character/Waifu တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေသည်...")
         pending_groups.append(message.chat.id)
         try:
             await message.forward(CHECKER_BOT_ID)
@@ -70,14 +71,21 @@ async def on_checker_reply(client, message):
     global pending_groups
     msg_text = message.text or message.caption or ""
     
-    # "Full :" စာကြောင်းမှ /catch ... ကို ရှာဖွေခြင်း
-    match = re.search(r"Full\s*:\s*(/catch\s+[^\n]+)", msg_text, re.IGNORECASE)
+    # Checker Bot ရဲ့ အဖြေမှ /catch သို့မဟုတ် /grab ကွန်မန်ကို ရှာဖွေခြင်း
+    match = re.search(r"((?:/catch|/grab|/guess)\s+[^\n]+)", msg_text, re.IGNORECASE)
     
-    if not match:
-        match_alt = re.search(r"Full\s*:\s*([^\n]+)", msg_text, re.IGNORECASE)
-        catch_cmd = f"/catch {match_alt.group(1).strip()}" if match_alt else None
-    else:
+    if match:
         catch_cmd = match.group(1).strip()
+    else:
+        match_alt = re.search(r"(?:Full|Name|Character)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
+        if match_alt:
+            val = match_alt.group(1).strip()
+            if val.startswith("/") or val.startswith("!"):
+                catch_cmd = val
+            else:
+                catch_cmd = f"/grab {val}" if "grab" in msg_text.lower() else f"/catch {val}"
+        else:
+            catch_cmd = f"/grab {msg_text.strip()}" if msg_text.strip() else None
 
     if catch_cmd and pending_groups:
         target_group = pending_groups.pop(0)
@@ -88,16 +96,14 @@ async def on_checker_reply(client, message):
             print(f"❌ Message send Error: {e}")
 
 if __name__ == "__main__":
-    # Flask Web Server Thread စတင်ခြင်း
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     print("✅ Flask Server စတင်လိုက်ပါပြီ။")
 
-    # Self-ping Thread စတင်ခြင်း (50s တစ်ခါ)
     ping_thread = threading.Thread(target=ping_self, daemon=True)
     ping_thread.start()
     print("✅ 50s Self-ping စနစ် စတင်လိုက်ပါပြီ။")
 
     print("🤖 Userbot စတင် အလုပ်လုပ်နေပါပြီ...")
     pyrogram_app.run()
-    
+
