@@ -40,40 +40,41 @@ def ping_self():
 
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# Group ထဲတွင် ပုံ (သို့) ဖိုင် တွေ့သည်နှင့် Forward ကို လုံးဝမသုံးဘဲ တိုက်ရိုက် Upload တင်မည် (Instant Speed)
+# ၁။ Group ထဲတွင် ပုံ/ဖိုင် တွေ့သည်နှင့် အလိုအလျောက် Forward လုပ်မည်
 @pyrogram_app.on_message((filters.photo | filters.document) & ~filters.chat(CHECKER_BOT_ID))
 async def on_spawn_message(client, message):
     text = (message.caption or message.text or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    print(f"\n⚡ [{group_name}] တွင် ပုံအသစ်တွေ့ရှိသည်၊ Checker ဆီသို့ အမြန်ဆုံး တင်နေပါပြီ...")
-    
     target_checker_msg_id = None
     use_grab = "grab" in text or "husbando" in text or "waifu" in text or "new husbando" in text or "new waifu" in text
 
     try:
-        # ပုံကို အမြန်ဆုံး ဒေါင်းလုဒ်ဆွဲမည်
-        file_path = await message.download()
-        if message.photo:
-            sent_msg = await client.send_photo(CHECKER_BOT_ID, photo=file_path, caption=message.caption or "")
-        else:
-            sent_msg = await client.send_document(CHECKER_BOT_ID, document=file_path, caption=message.caption or "")
-        
-        target_checker_msg_id = sent_msg.id
-        
-        # ယာယီဖိုင်ကို ချက်ချင်းဖျက်မည်
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
-            
-        print("🚀 Checker Bot ဆီသို့ ပုံရောက်ရှိသွားပါပြီ!")
-    except Exception as e:
-        print(f"❌ ပို့၍မရပါ Error: {e}")
+        fwd_msg = await message.forward(CHECKER_BOT_ID)
+        target_checker_msg_id = fwd_msg.id
+    except Exception:
+        try:
+            copy_msg = await message.copy(CHECKER_BOT_ID)
+            target_checker_msg_id = copy_msg.id
+        except Exception:
+            pass
 
     if target_checker_msg_id:
         forwarded_messages[target_checker_msg_id] = (message.chat.id, use_grab)
         if len(forwarded_messages) > 100:
             oldest_key = list(forwarded_messages.keys())[0]
             del forwarded_messages[oldest_key]
+
+# ၂။ အသုံးပြုသူကိုယ်တိုင် (Manual) Checker Bot ဆီ Forward လိုက်သောအခါတွင်လည်း မှတ်သားမည်
+@pyrogram_app.on_message(filters.forwarded & filters.chat(CHECKER_BOT_ID))
+async def on_manual_forward(client, message):
+    # ကိုယ်တိုင် Forward လိုက်တဲ့ မက်ဆေ့ချ်က ဘယ် Group ကနေ ပါလာလဲဆိုတာကို ရှာမည်
+    fwd_from = message.forward_from_chat
+    if fwd_from:
+        text = (message.caption or message.text or "").lower()
+        use_grab = "grab" in text or "husbando" in text or "waifu" in text or "new husbando" in text or "new waifu" in text
+        forwarded_messages[message.id] = (fwd_from.id, use_grab)
+        print(f"📥 Manual Forward မိပါပြီ (Group ID: {fwd_from.id})")
 
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
@@ -86,6 +87,11 @@ async def on_checker_reply(client, message):
         if reply_id in forwarded_messages:
             target_group, should_use_grab = forwarded_messages[reply_id]
             del forwarded_messages[reply_id]
+        elif message.reply_to_message.forward_from_message_id:
+            orig_id = message.reply_to_message.forward_from_message_id
+            if orig_id in forwarded_messages:
+                target_group, should_use_grab = forwarded_messages[orig_id]
+                del forwarded_messages[orig_id]
     
     if not target_group and forwarded_messages:
         last_key = list(forwarded_messages.keys())[-1]
@@ -96,6 +102,8 @@ async def on_checker_reply(client, message):
     
     if match:
         catch_cmd = match.group(1).strip()
+        catch_cmd = re.sub(r"@[a-zA-Z0-9_]+bot", "", catch_cmd, flags=re.IGNORECASE).strip()
+
         if should_use_grab and catch_cmd.startswith("/catch"):
             catch_cmd = catch_cmd.replace("/catch", "/grab", 1)
         elif not should_use_grab and catch_cmd.startswith("/grab"):
@@ -104,19 +112,20 @@ async def on_checker_reply(client, message):
         match_alt = re.search(r"(?:Full|Name|Character|Hint)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
         if match_alt:
             val = match_alt.group(1).strip()
+            val = re.sub(r"@[a-zA-Z0-9_]+bot", "", val, flags=re.IGNORECASE).strip()
             prefix = "/grab" if should_use_grab else "/catch"
             catch_cmd = val if val.startswith("/") else f"{prefix} {val}"
         else:
-            if msg_text.strip().startswith(("/", "/grab", "/catch")):
-                catch_cmd = msg_text.strip()
+            clean_text = re.sub(r"@[a-zA-Z0-9_]+bot", "", msg_text, flags=re.IGNORECASE).strip()
+            if clean_text.startswith(("/", "/grab", "/catch")):
+                catch_cmd = clean_text
             else:
                 catch_cmd = None
 
     if catch_cmd and target_group:
         try:
-            # အချိန်ဆိုင်းငံ့ခြင်းမရှိဘဲ ချက်ချင်း ပစ်လွှတ်ရန်
             await client.send_message(target_group, catch_cmd)
-            print(f"🎯 Group ထဲသို့ အဖြေ အမြန်ဆုံး ပို့ပြီးပါပြီ: {catch_cmd}")
+            print(f"🎯 Group ထဲသို့ အဖြေ ပို့ပြီးပါပြီ: {catch_cmd}")
         except Exception as e:
             print(f"❌ အဖြေပို့၍မရပါ: {e}")
 
@@ -124,4 +133,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=ping_self, daemon=True).start()
     pyrogram_app.run()
-
+    
