@@ -14,7 +14,7 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 # Forward လုပ်ရမည့် Checker Bot ID
 CHECKER_BOT_ID = 8506436817
 
-# Forward လုပ်ထားသော/Copy လုပ်ထားသော မက်ဆေ့ခ်ျ ID နှင့် Group ID ကို မှတ်သားမည့် Dictionary
+# မူလ Group များကို တိကျစွာ မှတ်သားမည့် Dictionary (Key: Checker Bot ဆီပို့လိုက်သည့် Msg ID, Value: Group ID & Name)
 forwarded_messages = {}
 
 # Flask App (Render Web Service အတွက်)
@@ -53,7 +53,6 @@ async def on_spawn_message(client, message):
     text = (message.caption or message.text or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    # ပုံထဲပါရှိသော စာသားပုံစံအမျိုးမျိုးကို စစ်ဆေးခြင်း
     spawn_keywords = [
         "spawn", "appeared", "harem", "waifu", "husbando", 
         "grab", "catch", "character has spawned", "new waifu", "new husbando"
@@ -63,61 +62,87 @@ async def on_spawn_message(client, message):
 
     if is_spawn:
         print(f"\n----------------------------------------")
-        print(f"📌 [{group_name}] မှ Card Bot ၏ Spawn ပုံကို တွေ့ရှိပါပြီ!")
-        print(f"🚀 Checker Bot ဆီသို့ Instant ပို့နေပါသည်...")
+        print(f"📌 [{group_name}] မှ Spawn ပုံ တွေ့ရှိပါပြီ!")
+        target_checker_msg = None
+        
         try:
-            # ပထမနည်း - တိုက်ရိုက် Forward လုပ်ကြည့်မည်
+            # ပထမနည်း - Forward လုပ်ကြည့်မည်
             fwd_msg = await message.forward(CHECKER_BOT_ID)
-            forwarded_messages[fwd_msg.id] = (message.chat.id, group_name)
-            print(f"✅ Forward အောင်မြင်ပါသည်။")
+            target_checker_msg = fwd_msg.id
+            print(f"✅ Checker Bot သို့ Forward ပြီးပါပြီ (ID: {target_checker_msg})")
         except Exception as e:
-            # Group က Forward ပိတ်ထားပါက ဤနေရာမှ Copy ကူး၍ ပို့မည်
-            print(f"⚠️ Forward လုပ်၍မရပါ ({e}) -> ပုံကို Copy ကူး၍ ပို့နေပါသည်...")
+            print(f"⚠️ Forward Error ({e}) -> Copy ကူး၍ ပို့နေပါသည်...")
             try:
+                # ဒုတိယနည်း - Copy ကူး၍ ပို့မည်
                 copy_msg = await message.copy(CHECKER_BOT_ID)
-                forwarded_messages[copy_msg.id] = (message.chat.id, group_name)
-                print(f"✅ Copy ကူး၍ ပို့ခြင်း အောင်မြင်ပါသည်။")
+                target_checker_msg = copy_msg.id
+                print(f"✅ Checker Bot သို့ Copy ဖြင့် ပို့ပြီးပါပြီ (ID: {target_checker_msg})")
             except Exception as ex:
-                print(f"❌ Copy လုပ်၍လည်း မရပါ: {ex}")
+                print(f"❌ Copy လုပ်၍ မရပါ: {ex}")
+
+        # ပို့လိုက်သည့် မက်ဆေ့ခ်ျ ID နှင့် မူလ Group ကို သေချာတွဲမှတ်မည်
+        if target_checker_msg:
+            forwarded_messages[target_checker_msg] = (message.chat.id, group_name)
+            
+            # မှတ်ဉာဏ်အလွန်များမသွားအောင် ပိုနေသော ပုံဟောင်းများကို ဖြတ်ထုတ်မည် (Old cleanup)
+            if len(forwarded_messages) > 50:
+                oldest_key = list(forwarded_messages.keys())[0]
+                del forwarded_messages[oldest_key]
 
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
     msg_text = message.text or message.caption or ""
+    print(f"\n📥 Checker Bot ဆီမှ စာလက်ခံရရှိပါသည်: {msg_text}")
     
     target_group = None
     group_name = "Unknown Group"
     
+    # အဓိက အချက်: Checker Bot က reply ပြန်လာသည့် message ကို အခြေခံမှသာ မူလ Group ကို ရှာမည်
     if message.reply_to_message:
-        data = forwarded_messages.get(message.reply_to_message.id)
-        if data:
-            target_group, group_name = data
+        reply_id = message.reply_to_message.id
+        print(f"🔍 Reply လုပ်ထားသော Checker Message ID: {reply_id}")
+        
+        if reply_id in forwarded_messages:
+            target_group, group_name = forwarded_messages[reply_id]
+            print(f"🎯 တိကျသော မူလ Group တွေ့ရှိပါပြီ: {group_name} (ID: {target_group})")
+        else:
+            print(f"⚠️ ဤ Reply ID ({reply_id}) ကို မှတ်တမ်းထဲတွင် မတွေ့ရပါ။")
+    else:
+        print(f"⚠️ Checker Bot ဘက်မှ Reply လုပ်မထားပါ။")
 
-    if not target_group and forwarded_messages:
-        target_group, group_name = list(forwarded_messages.values())[-1]
-
-    # Checker Bot မှ ပို့ပေးသော ကွန်မန်များကို ရှာဖွေခြင်း
+    # Command ဖမ်းယူခြင်း (Regex)
     match = re.search(r"((?:/catch|/grab|/check)\s+[^\n]+)", msg_text, re.IGNORECASE)
     
     if match:
         catch_cmd = match.group(1).strip()
     else:
-        match_alt = re.search(r"(?:Full|Name|Character)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
+        match_alt = re.search(r"(?:Full|Name|Character|Hint)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
         if match_alt:
             val = match_alt.group(1).strip()
             catch_cmd = val if val.startswith("/") else f"/catch {val}"
         else:
-            catch_cmd = msg_text.strip() if msg_text.strip().startswith("/") else None
+            if msg_text.strip().startswith(("/", "/grab", "/catch")):
+                catch_cmd = msg_text.strip()
+            else:
+                catch_cmd = None
 
+    print(f"⚙️ ထွက်လာသော Command: {catch_cmd}")
+
+    # တိကျမှန်ကန်သော Target Group ရှိမှသာ ပို့မည် (Fallback ဖြင့် အလဟဿ အခြား Group သို့ လုံးဝ မပို့တော့ပါ)
     if catch_cmd and target_group:
-        print(f"📤 [{group_name}] သို့ '{catch_cmd}' လို့ ပို့ပြီးပါပြီ...")
+        print(f"📤 တိကျသော Group [{group_name}] သို့ '{catch_cmd}' ကို ပို့နေပါပြီ...")
         try:
             await client.send_message(target_group, catch_cmd)
-            print(f"🎉 အောင်မြင်စွာ ပြီးဆုံးပါပြီ!")
+            print(f"🎉 Group ထဲသို့ အောင်မြင်စွာ ပို့ပြီးပါပြီ!")
+            
+            # ပို့ပြီးပါက မှတ်တမ်းမှ ဖျက်မည်
             if message.reply_to_message and message.reply_to_message.id in forwarded_messages:
                 del forwarded_messages[message.reply_to_message.id]
         except Exception as e:
             print(f"❌ Group ထဲသို့ ပို့၍မရပါ Error: {e}")
-        print(f"----------------------------------------\n")
+    else:
+        print(f"❌ မူလ Group အတိအကျ မသိရှိရပါသဖြင့် မည်သည့် Group သို့မျှ စာမပို့ပါ။ (Group လွဲခြင်းမှ ကာကွယ်ထားသည်)")
+    print(f"----------------------------------------\n")
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
@@ -128,4 +153,4 @@ if __name__ == "__main__":
 
     print("🤖 Userbot စတင် အလုပ်လုပ်နေပါပြီ...")
     pyrogram_app.run()
-    
+
