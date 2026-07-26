@@ -11,8 +11,8 @@ API_ID = int(os.environ.get("API_ID", "38612444"))
 API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
-# စာလက်ခံမည့် Group ID (၃) ခု
-SPAWN_GROUPS = [-1003854698282, -1001947407820 ]
+# စာလက်ခံမည့် Group ID (၂) ခုသာ
+SPAWN_GROUPS = [-1003854698282, -1001947407820]
 
 # Forward လုပ်ရမည့် Checker Bot ID
 CHECKER_BOT_ID = 8506436817
@@ -53,14 +53,11 @@ def ping_self():
 # Pyrogram Client Setup
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-@pyrogram_app.on_message()
+@pyrogram_app.on_message(filters.chat(SPAWN_GROUPS))
 async def on_spawn_message(client, message):
-    if not message.chat or message.chat.id not in SPAWN_GROUPS:
-        return
-        
     text = (message.text or message.caption or "").lower()
     # Chat ထဲသို့ Spawn/Character ရောက်လာပါက Checker Bot သို့ Forward လုပ်မည်
-    if message.photo or "spawned" in text or "appeared" in text or "harem" in text or "character" in text:
+    if message.photo or "spawned" in text or "appeared" in text or "harem" in text:
         print(f"📥 Group [{message.chat.id}] တွင် Spawn တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေသည်...")
         pending_groups.append(message.chat.id)
         try:
