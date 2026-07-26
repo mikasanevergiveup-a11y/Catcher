@@ -40,38 +40,42 @@ def ping_self():
 
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-@pyrogram_app.on_message(filters.photo & ~filters.chat(CHECKER_BOT_ID))
+# Checker Bot မှလွဲ၍ မည်သည့် Group မှမဆို ပုံ (Photo) သို့မဟုတ် Document ပါလာပါက ချက်ချင်းဖမ်းမည်
+@pyrogram_app.on_message((filters.photo | filters.document) & ~filters.chat(CHECKER_BOT_ID))
 async def on_spawn_message(client, message):
     text = (message.caption or message.text or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    print(f"\n👀 [{group_name}] တွင် ပုံတစ်ပုံ တွေ့ရှိပါသည်၊ Checker ဆီ ပို့နေပါပြီ...")
+    print(f"\n👀 [{group_name}] တွင် ပုံ/ဖိုင် တွေ့ရှိပါသည်၊ Checker သို့ ပို့နေပါပြီ...")
     
     target_checker_msg_id = None
-    use_grab = "grab" in text or "husbando" in text or "waifu" in text
+    use_grab = "grab" in text or "husbando" in text or "waifu" in text or "new husbando" in text or "new waifu" in text
 
-    # နည်းလမ်း ၁ - ပုံမှန် Forward လုပ်ကြည့်မည်
+    # ၁။ Forward လုပ်ကြည့်မည်
     try:
         fwd_msg = await message.forward(CHECKER_BOT_ID)
         target_checker_msg_id = fwd_msg.id
         print("✅ Forward အောင်မြင်သည်!")
     except Exception as e_fwd:
-        print(f"⚠️ Forward မရပါ ({e_fwd}) -> Copy ကူးကြည့်နေပါပြီ...")
-        # နည်းလမ်း ၂ - Copy ကူး၍ ပို့ကြည့်မည်
+        print(f"⚠️ Forward မရပါ ({e_fwd}) -> Copy ကူးနေပါသည်...")
+        # ၂။ Copy ကူးမည်
         try:
             copy_msg = await message.copy(CHECKER_BOT_ID)
             target_checker_msg_id = copy_msg.id
             print("✅ Copy ဖြင့် ပို့ခြင်း အောင်မြင်သည်!")
         except Exception as e_copy:
-            print(f"⚠️ Copy လည်း မရပါ ({e_copy}) -> ပုံကို Download ဆွဲ၍ တိုက်ရိုက် ပို့နေပါပြီ...")
-            # နည်းလမ်း ၃ - ပုံကို ဖိုင်အဖြစ် ဒေါင်းပြီး တိုက်ရိုက် Upload တင်မည်
+            print(f"⚠️ Copy လည်း မရပါ ({e_copy}) -> Download ဆွဲ၍ တိုက်ရိုက် ပို့နေပါပြီ...")
+            # ၃။ Download ဆွဲပြီး Upload တင်မည်
             try:
-                photo_path = await message.download()
-                sent_msg = await client.send_photo(CHECKER_BOT_ID, photo=photo_path, caption=message.caption or "")
+                file_path = await message.download()
+                if message.photo:
+                    sent_msg = await client.send_photo(CHECKER_BOT_ID, photo=file_path, caption=message.caption or "")
+                else:
+                    sent_msg = await client.send_document(CHECKER_BOT_ID, document=file_path, caption=message.caption or "")
                 target_checker_msg_id = sent_msg.id
-                if os.path.exists(photo_path):
-                    os.remove(photo_path)
-                print("✅ ပုံကို တိုက်ရိုက် Upload တင်ခြင်း အောင်မြင်သည်!")
+                if file_path and os.path.exists(file_path):
+                    os.remove(file_path)
+                print("✅ ဖိုင်ကို တိုက်ရိုက် Upload တင်ခြင်း အောင်မြင်သည်!")
             except Exception as e_dl:
                 print(f"❌ အားလုံး မအောင်မြင်ပါ: {e_dl}")
 
