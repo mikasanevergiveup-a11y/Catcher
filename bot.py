@@ -56,13 +56,17 @@ pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, ses
 @pyrogram_app.on_message(filters.chat(SPAWN_GROUPS))
 async def on_spawn_message(client, message):
     text = (message.text or message.caption or "").lower()
+    group_name = message.chat.title or str(message.chat.id)
     
     # Spawn သို့မဟုတ် Waifu ပုံများ ဝင်လာခြင်းကို စစ်ဆေးမည်
     if message.photo and any(kw in text for kw in ["spawn", "appeared", "harem", "waifu", "grab", "catch"]):
-        print(f"📥 Group [{message.chat.id}] တွင် Character တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေသည်...")
+        print(f"\n----------------------------------------")
+        print(f"📌 [{group_name}] မှ card လက်ခံရရှိပါသည်")
+        print(f"🔄 Bot သို့ forward လုပ်နေပါသည်...")
         try:
             fwd_msg = await message.forward(CHECKER_BOT_ID)
-            forwarded_messages[fwd_msg.id] = message.chat.id
+            forwarded_messages[fwd_msg.id] = (message.chat.id, group_name)
+            print(f"✅ Forward လုပ်ပြီးပါပြီ။")
         except Exception as e:
             print(f"❌ Forward Error: {e}")
 
@@ -71,11 +75,15 @@ async def on_checker_reply(client, message):
     msg_text = message.text or message.caption or ""
     
     target_group = None
+    group_name = "Unknown Group"
+    
     if message.reply_to_message:
-        target_group = forwarded_messages.get(message.reply_to_message.id)
+        data = forwarded_messages.get(message.reply_to_message.id)
+        if data:
+            target_group, group_name = data
 
     if not target_group and forwarded_messages:
-        target_group = list(forwarded_messages.values())[-1]
+        target_group, group_name = list(forwarded_messages.values())[-1]
 
     # Checker Bot မှ ပို့ပေးသော Full / catch / grab ကွန်မန်များကို ရှာဖွေခြင်း
     match = re.search(r"((?:/catch|/grab|/check)\s+[^\n]+)", msg_text, re.IGNORECASE)
@@ -91,13 +99,15 @@ async def on_checker_reply(client, message):
             catch_cmd = msg_text.strip() if msg_text.strip().startswith("/") else None
 
     if catch_cmd and target_group:
-        print(f"📤 Group [{target_group}] သို့ ပို့လိုက်ပါပြီ: '{catch_cmd}'")
+        print(f"📤 [{group_name}] သို့ '{catch_cmd}' လို့ပို့ပြီးပါပြီ...")
         try:
-            await client.send_message(target_group, catch_cmd)
+            sent_msg = await client.send_message(target_group, catch_cmd)
+            print(f"🎉 Card ရရှိပါသည် (သို့မဟုတ် ပို့ပြီးပါပြီ)!")
             if message.reply_to_message and message.reply_to_message.id in forwarded_messages:
                 del forwarded_messages[message.reply_to_message.id]
         except Exception as e:
-            print(f"❌ Message send Error: {e}")
+            print(f"❌ Card မရရှိပါ (Error: {e})")
+        print(f"----------------------------------------\n")
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
