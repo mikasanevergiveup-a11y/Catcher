@@ -47,33 +47,36 @@ def ping_self():
 # Pyrogram Client Setup
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# Checker Bot မဟုတ်သော အခြားနေရာအားလုံးမှ ဝင်လာသော 'ပုံ' များကို စစ်ဆေးမည်
+# Checker Bot မှလွဲ၍ မည်သည့်နေရာမှမဆို ပုံ (Photo) ပါလာပါက စစ်ဆေးမည်
 @pyrogram_app.on_message(filters.photo & ~filters.chat(CHECKER_BOT_ID))
 async def on_spawn_message(client, message):
-    text = (message.caption or "").lower()
+    text = (message.caption or message.text or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    # Husbando ကိုပါ ထပ်ထည့်ထားပါသည်
-    has_spawn_keywords = any(kw in text for kw in ["spawn", "appeared", "harem", "waifu", "husbando", "grab", "catch"])
+    # ပုံထဲပါရှိသော စာသားပုံစံအမျိုးမျိုးကို စစ်ဆေးခြင်း
+    spawn_keywords = [
+        "spawn", "appeared", "harem", "waifu", "husbando", 
+        "grab", "catch", "character has spawned", "new waifu", "new husbando"
+    ]
+    
+    is_spawn = any(kw in text for kw in spawn_keywords)
 
-    if has_spawn_keywords:
+    if is_spawn:
         print(f"\n----------------------------------------")
-        print(f"📌 [{group_name}] မှ Spawn/Husbando ပုံ လက်ခံရရှိပါသည်!")
-        print(f"🔄 Checker Bot သို့ forward လုပ်နေပါသည်...")
+        print(f"📌 [{group_name}] မှ Card Bot ၏ Spawn ပုံကို တွေ့ရှိပါပြီ!")
+        print(f"🚀 Checker Bot ဆီသို့ Instant ပို့နေပါသည်...")
         try:
-            # ပထမနည်း - ပုံမှန်အတိုင်း Forward လုပ်ကြည့်မည်
+            # ပထမနည်း - တိုက်ရိုက် Forward လုပ်ကြည့်မည်
             fwd_msg = await message.forward(CHECKER_BOT_ID)
             forwarded_messages[fwd_msg.id] = (message.chat.id, group_name)
-            print(f"✅ Forward လုပ်ပြီးပါပြီ။")
+            print(f"✅ Forward အောင်မြင်ပါသည်။")
         except Exception as e:
-            # Group မှ Forward လုပ်ခွင့် ပိတ်ထားပါက ဤနေရာသို့ ရောက်မည်
-            print(f"⚠️ Forward Error (ပိတ်ထားပုံရသည်): {e}")
-            print(f"🔄 Forward အစား ပုံကို Copy ကူး၍ ပို့နေပါသည်...")
+            # Group က Forward ပိတ်ထားပါက ဤနေရာမှ Copy ကူး၍ ပို့မည်
+            print(f"⚠️ Forward လုပ်၍မရပါ ({e}) -> ပုံကို Copy ကူး၍ ပို့နေပါသည်...")
             try:
-                # ဒုတိယနည်း - ပုံကို Copy ကူး၍ Checker Bot ထံ တိုက်ရိုက်ပို့မည်
                 copy_msg = await message.copy(CHECKER_BOT_ID)
                 forwarded_messages[copy_msg.id] = (message.chat.id, group_name)
-                print(f"✅ Copy ကူး၍ ပို့ပြီးပါပြီ။")
+                print(f"✅ Copy ကူး၍ ပို့ခြင်း အောင်မြင်ပါသည်။")
             except Exception as ex:
                 print(f"❌ Copy လုပ်၍လည်း မရပါ: {ex}")
 
@@ -84,17 +87,15 @@ async def on_checker_reply(client, message):
     target_group = None
     group_name = "Unknown Group"
     
-    # Checker Bot မှ Reply ပြန်လာသော မက်ဆေ့ခ်ျကို အခြေခံ၍ မူလ Group ကို ရှာမည်
     if message.reply_to_message:
         data = forwarded_messages.get(message.reply_to_message.id)
         if data:
             target_group, group_name = data
 
-    # မတွေ့ပါက နောက်ဆုံးဝင်ထားသော Group သို့ ပို့မည်
     if not target_group and forwarded_messages:
         target_group, group_name = list(forwarded_messages.values())[-1]
 
-    # Checker Bot မှ ပို့ပေးသော Full / catch / grab ကွန်မန်များကို ရှာဖွေခြင်း
+    # Checker Bot မှ ပို့ပေးသော ကွန်မန်များကို ရှာဖွေခြင်း
     match = re.search(r"((?:/catch|/grab|/check)\s+[^\n]+)", msg_text, re.IGNORECASE)
     
     if match:
@@ -108,14 +109,14 @@ async def on_checker_reply(client, message):
             catch_cmd = msg_text.strip() if msg_text.strip().startswith("/") else None
 
     if catch_cmd and target_group:
-        print(f"📤 [{group_name}] သို့ '{catch_cmd}' လို့ပို့ပြီးပါပြီ...")
+        print(f"📤 [{group_name}] သို့ '{catch_cmd}' လို့ ပို့ပြီးပါပြီ...")
         try:
             await client.send_message(target_group, catch_cmd)
-            print(f"🎉 Card ရရှိပါသည် (သို့မဟုတ် ပို့ပြီးပါပြီ)!")
+            print(f"🎉 အောင်မြင်စွာ ပြီးဆုံးပါပြီ!")
             if message.reply_to_message and message.reply_to_message.id in forwarded_messages:
                 del forwarded_messages[message.reply_to_message.id]
         except Exception as e:
-            print(f"❌ Card မရရှိပါ (Error: {e})")
+            print(f"❌ Group ထဲသို့ ပို့၍မရပါ Error: {e}")
         print(f"----------------------------------------\n")
 
 if __name__ == "__main__":
@@ -127,4 +128,4 @@ if __name__ == "__main__":
 
     print("🤖 Userbot စတင် အလုပ်လုပ်နေပါပြီ...")
     pyrogram_app.run()
-
+    
