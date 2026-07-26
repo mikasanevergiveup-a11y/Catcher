@@ -14,7 +14,7 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 # စာလက်ခံမည့် Group ID (၃) ခု
 SPAWN_GROUPS = [-1003854698282, -1001947407820, -1003067509608]
 
-# Card Bot ၃ ခု၏ ID များ (ဤ Bot များထံမှ ပို့သောစာများကိုသာ လက်ခံမည်)
+# Card Bot ၃ ခု၏ ID များ
 CARD_BOT_IDS = [6157455819, 5934263177, 6212414747]
 
 # Forward လုပ်ရမည့် Checker Bot ID
@@ -46,11 +46,8 @@ def ping_self():
         if url:
             try:
                 res = requests.get(f"{url}/health", timeout=10)
-                print(f"🟢 Self-ping successful! Status: {res.status_code}")
-            except Exception as e:
-                print(f"🔴 Self-ping error: {e}")
-        else:
-            print("⚠️ RENDER_EXTERNAL_URL env variable မရှိသေးပါ။")
+            except Exception:
+                pass
         time.sleep(50)
 
 # Pyrogram Client Setup
@@ -58,16 +55,19 @@ pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, ses
 
 @pyrogram_app.on_message(filters.chat(SPAWN_GROUPS))
 async def on_spawn_message(client, message):
+    text = (message.text or message.caption or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    # မက်ဆေ့ခ်ျပို့သည့် Sender (Bot) ၏ ID ကို ရယူခြင်း
     sender_id = message.from_user.id if message.from_user else (message.sender_chat.id if message.sender_chat else None)
     
-    # သတ်မှတ်ထားသော Card Bot ၃ ခုထဲမှ တစ်ခုခု ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-    if sender_id in CARD_BOT_IDS:
+    is_card_bot = sender_id in CARD_BOT_IDS
+    has_spawn_keywords = any(kw in text for kw in ["spawn", "appeared", "harem", "waifu", "grab", "catch"])
+
+    # အဓိကပြင်ဆင်ချက်: ပုံ(Photo) မပါရင် လုံးဝ အလုပ်မလုပ်စေရ!
+    if message.photo and (is_card_bot or has_spawn_keywords):
         print(f"\n----------------------------------------")
-        print(f"📌 [{group_name}] မှ သတ်မှတ်ထားသော Card Bot (ID: {sender_id}) ထံမှ စာလက်ခံရရှိပါသည်")
-        print(f"🔄 Bot သို့ forward လုပ်နေပါသည်...")
+        print(f"📌 [{group_name}] မှ Spawn ပုံ လက်ခံရရှိပါသည် (Sender ID: {sender_id})")
+        print(f"🔄 Checker Bot သို့ forward လုပ်နေပါသည်...")
         try:
             fwd_msg = await message.forward(CHECKER_BOT_ID)
             forwarded_messages[fwd_msg.id] = (message.chat.id, group_name)
