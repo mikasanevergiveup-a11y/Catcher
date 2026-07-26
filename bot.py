@@ -10,14 +10,13 @@ API_ID = int(os.environ.get("API_ID", "38612444"))
 API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
-# သင်ပေးထားသော ID များကို တိကျစွာ သတ်မှတ်ထားခြင်း
 CHECKER_BOT_ID = 8506436817
-TARGET_GROUPS = [-1001947407820, -1003067509608, -1003854698282]
-SPAWNER_BOTS = [6157455819, 5934263177, 6212414747]
 
-forwarded_messages = {}
-last_active_group = None
-last_use_grab = False
+# မှတ်ဉာဏ်စနစ်များ (Memory)
+forwarded_mapping = {}  # Checker Message ID ကို မူလ Group နှင့် ချိတ်ဆက်ရန်
+spawn_memory = {}       # Manual Forward လုပ်လျှင် ရှာနိုင်ရန် စာသားများကို မှတ်သားရန်
+last_group = None
+last_grab = False
 
 app_flask = Flask(__name__)
 
@@ -46,122 +45,119 @@ def ping_self():
 
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# ၁။ သတ်မှတ်ထားသော Group ၃ ခုအတွင်းရှိ သတ်မှတ်ထားသော Spawner Bot ၃ ခုထံမှ စာများကိုသာ Auto ဖမ်းမည်
-@pyrogram_app.on_message(filters.chat(TARGET_GROUPS))
+# ၁။ Group အားလုံးမှ Spawn စာသားများကို အလိုအလျောက် ရှာဖွေဖမ်းယူမည် (ID အသေမသတ်မှတ်တော့ပါ)
+@pyrogram_app.on_message(filters.group & (filters.photo | filters.document))
 async def on_spawn_message(client, message):
-    global last_active_group, last_use_grab
+    global last_group, last_grab
     
-    sender_id = message.from_user.id if message.from_user else None
-    # Spawner Bot မှ လာသောစာ မဟုတ်ပါက ကျော်သွားမည်
-    if sender_id not in SPAWNER_BOTS:
-        return
+    caption = (message.caption or message.text or "").lower()
+    is_spawn = False
+    use_grab = False
 
-    text = (message.caption or message.text or "").lower()
-    group_name = message.chat.title or str(message.chat.id)
-    
-    # Grab သုံးရန် လိုမလို စစ်ဆေးမည်
-    use_grab = "grab" in text or "husbando" in text or "waifu" in text or "new husbando" in text or "new waifu" in text
-    
-    last_active_group = message.chat.id
-    last_use_grab = use_grab
-    target_checker_msg_id = None
+    # ပုံ ၃ ပုံအရ စာသားများကို အတိအကျ စစ်ဆေးခြင်း
+    if "spawned in the chat" in caption:
+        is_spawn = True
+        use_grab = False  # /catch ကို သုံးမည်
+    elif "new waifu is here" in caption or "new husbando is here" in caption or "grab using" in caption:
+        is_spawn = True
+        use_grab = True   # /grab ကို သုံးမည်
 
-    print(f"\n⚡ [{group_name}] တွင် Card Spawner အသစ်တွေ့ရှိသည်၊ Card Reader ဆီသို့ ပို့နေပါပြီ...")
+    if not is_spawn:
+        return  # Spawn မဟုတ်ပါက ကျော်သွားမည်
+
+    group_id = message.chat.id
+    last_group = group_id
+    last_grab = use_grab
+
+    # Manual Forward လုပ်လာပါက Group အတိအကျ ပြန်ရှာနိုင်ရန် Caption ကို မှတ်ထားမည်
+    snippet = caption.replace('\n', ' ')[:60].strip()
+    if snippet:
+        spawn_memory[snippet] = (group_id, use_grab)
+
+    print(f"\n⚡ [Group: {message.chat.title or group_id}] တွင် Spawn အသစ်တွေ့ပါသည်! Auto ပို့နေပါပြီ...")
 
     try:
         fwd_msg = await message.forward(CHECKER_BOT_ID)
-        target_checker_msg_id = fwd_msg.id
-    except Exception:
-        try:
-            copy_msg = await message.copy(CHECKER_BOT_ID)
-            target_checker_msg_id = copy_msg.id
-        except Exception:
-            pass
+        forwarded_mapping[fwd_msg.id] = (group_id, use_grab)
+        print("✅ Auto-Forward အောင်မြင်ပါသည်။")
+    except Exception as e:
+        print(f"❌ Auto-Forward မအောင်မြင်ပါ: {e}")
 
-    if target_checker_msg_id:
-        forwarded_messages[target_checker_msg_id] = (message.chat.id, use_grab)
-        if len(forwarded_messages) > 100:
-            oldest_key = list(forwarded_messages.keys())[0]
-            del forwarded_messages[oldest_key]
+    # Memory မပြည့်စေရန် အဟောင်းများကို ရှင်းလင်းမည်
+    if len(forwarded_mapping) > 200:
+        forwarded_mapping.pop(next(iter(forwarded_mapping)))
+    if len(spawn_memory) > 200:
+        spawn_memory.pop(next(iter(spawn_memory)))
 
-# ၂။ ကိုယ်တိုင် (Manual) Checker Bot ဆီသို့ Forward လုပ်သည့်အခါ (Grab/Catch အမှားပြဿနာ ဖြေရှင်းထားသည်)
-@pyrogram_app.on_message(filters.chat(CHECKER_BOT_ID) & filters.forwarded)
+
+# ၂။ ကိုယ်တိုင် (Manual) Forward လုပ်သည့်အခါ မူလ Group ကို အတိအကျ ပြန်ရှာမည်
+@pyrogram_app.on_message(filters.chat(CHECKER_BOT_ID) & filters.outgoing)
 async def on_manual_forward(client, message):
-    global last_active_group, last_use_grab
+    global last_group, last_grab
     
-    text = (message.caption or message.text or "").lower()
-    use_grab = "grab" in text or "husbando" in text or "waifu" in text or "new husbando" in text or "new waifu" in text
+    caption = (message.caption or message.text or "").lower()
+    snippet = caption.replace('\n', ' ')[:60].strip()
     
-    target_group = last_active_group
-    # မူလ Group ကို ရှာနိုင်ပါက အစားထိုးမည်
-    if message.forward_from_chat and message.forward_from_chat.id in TARGET_GROUPS:
-        target_group = message.forward_from_chat.id
+    group_id = None
+    use_grab = "grab" in caption or "waifu" in caption or "husbando" in caption
 
-    if target_group:
-        forwarded_messages[message.id] = (target_group, use_grab)
-        last_use_grab = use_grab
-        print(f"📥 Manual Forward မိပါပြီ (Grab အသုံးပြုရန်: {use_grab})")
+    # Forward လုပ်လာတဲ့ စာကို မှတ်ဉာဏ်ထဲမှာ ပြန်ရှာမည်
+    if snippet in spawn_memory:
+        group_id, mem_grab = spawn_memory[snippet]
+        use_grab = use_grab or mem_grab
+    elif message.forward_from_chat:
+        group_id = message.forward_from_chat.id
+    
+    if group_id:
+        forwarded_mapping[message.id] = (group_id, use_grab)
+        last_group = group_id
+        last_grab = use_grab
+        print(f"📥 Manual Forward မိပါပြီ! (Group အမှန်: {group_id} | Use Grab: {use_grab})")
 
-# ၃။ Checker Bot မှ အဖြေပြန်လာသောအခါ Auto /grab သို့မဟုတ် /catch ဖြင့် Group သို့ ပြန်ပို့မည်
-@pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
+
+# ၃။ Checker Bot မှ အဖြေပြန်လာသောအခါ မှန်ကန်သော Group ထဲသို့ ပြန်ပို့မည်
+@pyrogram_app.on_message(filters.chat(CHECKER_BOT_ID) & filters.incoming)
 async def on_checker_reply(client, message):
-    global last_active_group, last_use_grab
-    msg_text = message.text or message.caption or ""
+    text = message.text or message.caption or ""
     
     target_group = None
-    should_use_grab = None
+    use_grab = False
     
-    # Message ID ချိတ်ဆက်မှု ရှာဖွေခြင်း
-    if message.reply_to_message:
-        reply_id = message.reply_to_message.id
-        if reply_id in forwarded_messages:
-            target_group, should_use_grab = forwarded_messages[reply_id]
-            del forwarded_messages[reply_id]
-        elif message.reply_to_message.forward_from_message_id:
-            orig_id = message.reply_to_message.forward_from_message_id
-            if orig_id in forwarded_messages:
-                target_group, should_use_grab = forwarded_messages[orig_id]
-                del forwarded_messages[orig_id]
-    
-    # ID မတွေ့ပါက နောက်ဆုံး မှတ်ထားသော Group ကို သုံးမည်
-    if not target_group:
-        if forwarded_messages:
-            last_key = list(forwarded_messages.keys())[-1]
-            target_group, should_use_grab = forwarded_messages[last_key]
-            del forwarded_messages[last_key]
-        elif last_active_group:
-            target_group = last_active_group
-            should_use_grab = last_use_grab
+    # Message ID ချိတ်ဆက်မှုကို အရင်ရှာမည်
+    if message.reply_to_message and message.reply_to_message.id in forwarded_mapping:
+        target_group, use_grab = forwarded_mapping[message.reply_to_message.id]
+    else:
+        # မတွေ့ပါက နောက်ဆုံး မှတ်ထားသော Group ကို သုံးမည်
+        target_group = last_group
+        use_grab = last_grab
 
-    # Checker Bot ၏ အဖြေမှ Character Name ကိုသာ သီးသန့်ထုတ်ယူမည် (Checker Bot က ဘာပဲပြောပြော လျစ်လျူရှုမည်)
+    if not target_group:
+        return
+
     character_name = ""
-    match_name = re.search(r"NAME\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
     
+    # ဓာတ်ပုံထဲကအတိုင်း Checker Bot ၏ အဖြေ (NAME: Hinatsuru | 🆔 3143) ကို ဖမ်းယူခြင်း
+    match_name = re.search(r"NAME\s*[:\-]?\s*([^|\n]+)", text, re.IGNORECASE)
+    match_full = re.search(r"Full\s*[:\-]?\s*/(?:catch|grab)\s+([^\n]+)", text, re.IGNORECASE)
+    match_cmd = re.search(r"/(?:catch|grab)\s+([^\n]+)", text, re.IGNORECASE)
+
     if match_name:
         character_name = match_name.group(1).strip()
-    else:
-        match_full = re.search(r"Full\s*[:\-]?\s*/[a-zA-Z]+\s+([^\n]+)", msg_text, re.IGNORECASE)
-        if match_full:
-            character_name = match_full.group(1).strip()
-        else:
-            match_general = re.search(r"/(catch|grab|check)\s+([^\n]+)", msg_text, re.IGNORECASE)
-            if match_general:
-                character_name = match_general.group(2).strip()
+    elif match_full:
+        character_name = match_full.group(1).strip()
+    elif match_cmd:
+        character_name = match_cmd.group(1).strip()
 
-    # Name ရလာပါက /grab သို့မဟုတ် /catch နှင့် တွဲ၍ ပို့မည်
-    catch_cmd = None
     if character_name:
-        # Username များ ပါလာပါက ဖြတ်ထုတ်မည်
         character_name = re.sub(r"@[a-zA-Z0-9_]+bot", "", character_name, flags=re.IGNORECASE).strip()
         
-        # မူလ စာသားတွင် Grab သုံးရန် လိုအပ်ပါက /grab, မလိုအပ်ပါက /catch သုံးမည်
-        prefix = "/grab" if should_use_grab else "/catch"
-        catch_cmd = f"{prefix} {character_name}"
+        # Grab သို့မဟုတ် Catch ကို မှန်ကန်စွာ ရွေးချယ်မည်
+        cmd_prefix = "/grab" if use_grab else "/catch"
+        final_cmd = f"{cmd_prefix} {character_name}"
 
-    if catch_cmd and target_group:
         try:
-            await client.send_message(target_group, catch_cmd)
-            print(f"🎯 Group ({target_group}) ထဲသို့ အဖြေ အောင်မြင်စွာ ပို့ပြီးပါပြီ: {catch_cmd}")
+            await client.send_message(target_group, final_cmd)
+            print(f"🎯 Group ({target_group}) သို့ အဖြေ မှန်ကန်စွာ ပို့ပြီးပါပြီ: {final_cmd}")
         except Exception as e:
             print(f"❌ အဖြေပို့၍မရပါ: {e}")
 
