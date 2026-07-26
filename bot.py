@@ -1,6 +1,8 @@
 import os
 import re
-import asyncio
+import threading
+import time
+import requests
 from flask import Flask
 from pyrogram import Client, filters, idle
 
@@ -11,6 +13,7 @@ CHECKER_BOT_ID = 8506436817
 
 pending_groups = []
 
+# Flask Web Server Setup (Render မအိပ်စေရန်)
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
@@ -21,6 +24,22 @@ def home():
 def health():
     return "OK", 200
 
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app_flask.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+def ping_self():
+    time.sleep(15)
+    while True:
+        url = os.environ.get("RENDER_EXTERNAL_URL", "")
+        if url:
+            try:
+                requests.get(f"{url}/health", timeout=10)
+            except:
+                pass
+        time.sleep(50)
+
+# Pyrogram Userbot Setup
 pyrogram_app = Client(
     "autocatch_userbot",
     api_id=API_ID,
@@ -42,8 +61,10 @@ async def on_spawn_message(client, message):
         if message.photo and any(kw in text for kw in spawn_keywords):
             print(f"🎯 Group [{chat_id}] တွင် Spawn တွေ့ပါပြီ! Checker သို့ Forward လုပ်နေသည်...")
             pending_groups.append(chat_id)
-            # send_message (သို့) forward လုပ်သည့်အခါ Peer ID Error မတက်စေရန် get_chat သုံးပြီး cache လုပ်မည်
-            await client.get_chat(chat_id)
+            try:
+                await client.get_chat(chat_id)
+            except:
+                pass
             await message.forward(CHECKER_BOT_ID)
     except Exception as e:
         print(f"❌ Spawn Error: {e}")
@@ -81,33 +102,28 @@ async def on_checker_reply(client, message):
     except Exception as e:
         print(f"❌ Checker Reply Error: {e}")
 
-async def main():
-    port = int(os.environ.get("PORT", 10000))
-    print("🤖 Pyrogram Userbot စတင်နေပါပြီ...")
+def main():
+    print("🤖 Pyrogram Userbot စတင် ချိတ်ဆက်နေပါပြီ...")
+    pyrogram_app.start()
     
-    await pyrogram_app.start()
-    
-    # Userbot ရောက်ရှိနေသော Group များနှင့် Dialogs များကို Cache တည်ဆောက်မည် (Peer ID Error ကာကွယ်ရန်)
     print("🔄 Group များနှင့် Chat များကို Cache လုပ်နေပါပြီ...")
     try:
-        async for _ in pyrogram_app.get_dialogs():
+        for dialog in pyrogram_app.get_dialogs():
             pass
         print("✅ Cache တည်ဆောက်ပြီးပါပြီ။ Bot အသင့်ဖြစ်ပါပြီ။")
     except Exception as e:
-        print(f"⚠️ Cache Error: {e}")
-    
-    import hypercorn.asyncio
-    from hypercorn.config import Config
-    
-    config = Config()
-    config.bind = [f"0.0.0.0:{port}"]
-    
-    await asyncio.gather(
-        hypercorn.asyncio.serve(app_flask, config),
-        idle()
-    )
-    await pyrogram_app.stop()
+        print(f"⚠️ Cache Warning: {e}")
+        
+    idle()
+    pyrogram_app.stop()
 
 if __name__ == "__main__":
+    # 1. Flask ကို background thread ဖြင့် Run မည်
+    threading.Thread(target=run_flask, daemon=True).start()
+    # 2. Render ကို အိပ်မသွားစေရန် self-ping လုပ်မည်
+    threading.Thread(target=ping_self, daemon=True).start()
+    # 3. Pyrogram Userbot ကို ပင်မ thread တွင် Run မည်
+    main()
+    if __name__ == "__main__":
     asyncio.run(main())
 
