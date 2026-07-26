@@ -11,7 +11,8 @@ API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 CHECKER_BOT_ID = 8506436817
 
-pending_groups = []
+# နောက်ဆုံး spawn တွေ့ခဲ့သော Group ID များကို သိမ်းဆည်းရန်
+last_spawned_chat_id = None
 
 app_flask = Flask(__name__)
 
@@ -52,16 +53,23 @@ async def on_spawn_message(client, message):
             return
             
         chat_id = message.chat.id
+        
+        # ကိုယ့်ဆီက Forward လုပ်တာ ဒါမှမဟုတ် Checker Bot ဆီကလာတာတွေကို ကျော်သွားမယ်
+        if chat_id == CHECKER_BOT_ID or message.outgoing:
+            return
+
         text = (message.text or message.caption or "").lower()
         
+        # Character Spawn ဖြစ်ကြောင်းပြသော Keyword များ
         spawn_keywords = [
             "appeared", "spawned", "character", "harem", "guess", 
             "catch", "grab", "waifu", "husbando", "hurry"
         ]
         
         if message.photo and any(kw in text for kw in spawn_keywords):
+            global last_spawned_chat_id
+            last_spawned_chat_id = chat_id
             print(f"🎯 Group [{chat_id}] တွင် Spawn တွေ့ပါပြီ! Checker သို့ Forward လုပ်နေသည်...")
-            pending_groups.append(chat_id)
             try:
                 await client.get_chat(chat_id)
             except:
@@ -73,18 +81,18 @@ async def on_spawn_message(client, message):
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
     try:
-        global pending_groups
+        global last_spawned_chat_id
         msg_text = message.text or message.caption or ""
         print(f"📩 Checker Reply:\n{msg_text}")
         
         cmd_to_send = None
         
-        # 1. စာသားထဲတွင် /catch, /grab, /guess စသည်တို့ပါဝင်သော Command အပြည့်အစုံကို ရှာမည် (သင်္ကေတများပါ ခွင့်ပြုသည်)
+        # 1. Checker မှ ပေးပို့သော Command အပြည့်အစုံကို ရှာယူမည်
         match_cmd = re.search(r"((?:/catch|/grab|/guess|/hunt|/collect)\s+[^\n]+)", msg_text, re.IGNORECASE)
         if match_cmd:
             cmd_to_send = match_cmd.group(1).strip()
         else:
-            # 2. Full:, Name:, Hint: စသည်တို့နောက်တွင် ပါလာသောတန်ဖိုးကို ဖြတ်ထုတ်မည်
+            # 2. Full:, Name:, Hint: နောက်မှ နာမည်ကို ဖြတ်ထုတ်မည်
             match_alt = re.search(r"(?:Full|Name|Character|Result|Hint)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
             if match_alt:
                 raw_val = match_alt.group(1).strip()
@@ -105,12 +113,16 @@ async def on_checker_reply(client, message):
                     if clean_text.startswith("/") or clean_text.startswith("!"):
                         cmd_to_send = clean_text
                     else:
-                        cmd_to_send = f"/catch {clean_text}"
+                        cmd_to_send = f"/grab {clean_text}"
 
-        if cmd_to_send and pending_groups:
-            target_group = pending_groups.pop(0)
+        if cmd_to_send and last_spawned_chat_id:
+            target_group = last_spawned_chat_id
             print(f"📤 Group [{target_group}] သို့ ပို့မည်: '{cmd_to_send}'")
             await client.send_message(target_group, cmd_to_send)
+            # ပို့ပြီးပါက ID ကို ရှင်းထုတ်မည်
+            last_spawned_chat_id = None
+        else:
+            print("⚠️ ပို့ရန် Group ID မရှိပါ (သို့) Command မတွေ့ပါ။")
     except Exception as e:
         print(f"❌ Checker Reply Error: {e}")
 
@@ -133,4 +145,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=ping_self, daemon=True).start()
     main()
-    
+
