@@ -12,6 +12,9 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 CHECKER_BOT_ID = 8506436817
 forwarded_messages = {}
+# နောက်ဆုံး Forward လုပ်ခဲ့သော Group ကို အမြဲမှတ်ထားမည့် Variable
+last_target_group = None
+last_group_name = "Unknown"
 
 app_flask = Flask(__name__)
 
@@ -40,20 +43,19 @@ def ping_self():
 
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# Group သို့မဟုတ် Private မခွဲခြားဘဲ Checker Bot မဟုတ်သည့် မည်သည့်နေရာမှမဆို ပုံပါလာလျှင် အကုန်ဖမ်းမည်
 @pyrogram_app.on_message(filters.photo & ~filters.chat(CHECKER_BOT_ID))
 async def on_spawn_message(client, message):
+    global last_target_group, last_group_name
     text = (message.caption or message.text or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    print(f"👀 [Monitor] '{group_name}' တွင် ပုံတစ်ပုံ တွေ့ရှိပါသည် | Caption: {text[:30]}...")
+    print(f"👀 [Monitor] '{group_name}' တွင် ပုံတစ်ပုံ တွေ့ရှိပါသည်...")
 
     spawn_keywords = [
         "spawn", "appeared", "harem", "waifu", "husbando", 
         "grab", "catch", "character has spawned", "new waifu", "new husbando"
     ]
     
-    # Keyword တစ်ခုခုပါဝင်ခြင်း (သို့မဟုတ်) ပုံပါလာရုံနဲ့တင် ဖမ်းစေချင်ပါက keyword စစ်ဆေးမှုကို ဖြုတ်နိုင်သည်
     is_spawn = any(kw in text for kw in spawn_keywords) or len(text) == 0
 
     if is_spawn:
@@ -73,25 +75,35 @@ async def on_spawn_message(client, message):
                 print(f"❌ ပို့၍မရပါ: {ex}")
 
         if target_checker_msg:
+            # မူလ Group ကို မှတ်သားမည်
             forwarded_messages[target_checker_msg] = (message.chat.id, group_name)
-            if len(forwarded_messages) > 50:
-                oldest_key = list(forwarded_messages.keys())[0]
-                del forwarded_messages[oldest_key]
+            last_target_group = message.chat.id
+            last_group_name = group_name
+            print(f"🎯 Last Target Group ကို အပ်ဒိတ်လုပ်ပြီးပါပြီ: {group_name}")
 
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
+    global last_target_group, last_group_name
     msg_text = message.text or message.caption or ""
     print(f"📥 Checker Bot မှ စာလာပါပြီ: {msg_text}")
     
     target_group = None
     group_name = "Unknown Group"
     
+    # 1. Reply လုပ်ထားခြင်း ရှိမရှိ စစ်မည်
     if message.reply_to_message:
         reply_id = message.reply_to_message.id
         if reply_id in forwarded_messages:
             target_group, group_name = forwarded_messages[reply_id]
-            print(f"🎯 မူလ Group တွေ့ရှိသည်: {group_name}")
+            print(f"🎯 Reply မှတဆင့် Group တွေ့ရှိသည်: {group_name}")
 
+    # 2. Reply မပါပါက (သို့မဟုတ်) ID မတွေ့ပါက နောက်ဆုံး Forward ခဲ့သော Group ကို သုံးမည်
+    if not target_group and last_target_group:
+        target_group = last_target_group
+        group_name = last_group_name
+        print(f"⚠️ Reply မရှိပါ၊ နောက်ဆုံး မှတ်ထားသော Group ကို သုံးပါမည်: {group_name}")
+
+    # Command ဖမ်းယူခြင်း
     match = re.search(r"((?:/catch|/grab|/check)\s+[^\n]+)", msg_text, re.IGNORECASE)
     
     if match:
@@ -117,11 +129,11 @@ async def on_checker_reply(client, message):
         except Exception as e:
             print(f"❌ ပို့၍မရပါ Error: {e}")
     else:
-        print(f"❌ Target Group သို့မဟုတ် Command မရှိပါသဖြင့် ကျော်လိုက်ပါသည်။")
+        print(f"❌ Command သို့မဟုတ် Target Group မရှိပါသဖြင့် ကျော်လိုက်ပါသည်။")
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=ping_self, daemon=True).start()
     print("🤖 Userbot စတင် အလုပ်လုပ်နေပါပြီ...")
     pyrogram_app.run()
-    
+
