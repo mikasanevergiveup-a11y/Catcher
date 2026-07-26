@@ -11,8 +11,10 @@ API_ID = int(os.environ.get("API_ID", "38612444"))
 API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
-# စာလက်ခံမည့် Group ID (၃) ခု
-SPAWN_GROUPS = [-1004295330651, -1003315850707, -1003854698282]
+# Environment Variable မှ Group ID များကို ကော်မာ (,) ဖြင့် ခွဲထုတ်ဖတ်ယူခြင်း
+# ဥပမာ: -1004295330651,-1003315850707,-1003854698282
+env_groups = os.environ.get("TARGET_GROUPS", "-1004295330651,-1003315850707,-1003854698282")
+SPAWN_GROUPS = [int(g.strip()) for g in env_groups.split(",") if g.strip()]
 
 # Forward လုပ်ရမည့် Checker Bot ID
 CHECKER_BOT_ID = 8506436817
@@ -53,11 +55,13 @@ def ping_self():
 # Pyrogram Client Setup
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-@pyrogram_app.on_message(filters.chat(SPAWN_GROUPS))
+@pyrogram_app.on_message()
 async def on_spawn_message(client, message):
+    if not message.chat or message.chat.id not in SPAWN_GROUPS:
+        return
+        
     text = (message.text or message.caption or "").lower()
-    # Chat ထဲသို့ Spawn/Character ရောက်လာပါက Checker Bot သို့ Forward လုပ်မည်
-    if message.photo or "spawned" in text or "appeared" in text or "harem" in text:
+    if message.photo or "spawned" in text or "appeared" in text or "harem" in text or "character" in text:
         print(f"📥 Group [{message.chat.id}] တွင် Spawn တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေသည်...")
         pending_groups.append(message.chat.id)
         try:
@@ -70,11 +74,9 @@ async def on_checker_reply(client, message):
     global pending_groups
     msg_text = message.text or message.caption or ""
     
-    # "Full :" စာကြောင်းမှ /catch ... ကို ရှာဖွေခြင်း
     match = re.search(r"Full\s*:\s*(/catch\s+[^\n]+)", msg_text, re.IGNORECASE)
     
     if not match:
-        # /catch မပါဘဲ နာမည်ပဲ ပါလာခဲ့လျှင် ပြင်ဆင်ပေးခြင်း
         match_alt = re.search(r"Full\s*:\s*([^\n]+)", msg_text, re.IGNORECASE)
         catch_cmd = f"/catch {match_alt.group(1).strip()}" if match_alt else None
     else:
@@ -89,16 +91,14 @@ async def on_checker_reply(client, message):
             print(f"❌ Message send Error: {e}")
 
 if __name__ == "__main__":
-    # Flask Web Server Thread စတင်ခြင်း
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     print("✅ Flask Server စတင်လိုက်ပါပြီ။")
 
-    # Self-ping Thread စတင်ခြင်း (50s တစ်ခါ)
     ping_thread = threading.Thread(target=ping_self, daemon=True)
     ping_thread.start()
     print("✅ 50s Self-ping စနစ် စတင်လိုက်ပါပြီ။")
 
     print("🤖 Userbot စတင် အလုပ်လုပ်နေပါပြီ...")
     pyrogram_app.run()
-      
+
