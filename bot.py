@@ -3,8 +3,9 @@ import re
 import threading
 import time
 import requests
+import asyncio
 from flask import Flask
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 
 # Configuration from Environment Variables
 API_ID = int(os.environ.get("API_ID", "38612444"))
@@ -52,31 +53,30 @@ async def on_spawn_message(client, message):
         if not message.chat:
             return
             
+        # မိမိသတ်မှတ်ထားသော Group ၂ ခု မဟုတ်ပါက လျစ်လျူရှုမည် (Log တွင် အရှုပ်အရှင်းမဖြစ်စေရန်)
+        if message.chat.id not in SPAWN_GROUPS:
+            return
+            
         text = (message.text or message.caption or "").lower()
         
         # Spawn မက်ဆေ့စ် ဟုတ်မဟုတ် စစ်ဆေးခြင်း
         is_spawn = (message.photo or "spawned" in text or "appeared" in text or "harem" in text or "character" in text)
         
         if is_spawn:
-            print(f"👀 သတိပြုရန်: Group ID [ {message.chat.id} ] တွင် Spawn မက်ဆေ့စ် တွေ့ပါသည်။")
-            
-            if message.chat.id not in SPAWN_GROUPS:
-                print(f"🚫 ကျော်သွားပါမည်: ထို Group ID [ {message.chat.id} ] သည် သင်ထည့်ထားသော စာရင်းထဲတွင် မပါပါ။")
-                return
-                
-            print(f"✅ မှန်ကန်သော Group [ {message.chat.id} ] ဖြစ်သဖြင့် Checker သို့ Forward လုပ်နေပါပြီ...")
+            print(f"✅ Group [ {message.chat.id} ] တွင် Spawn တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေပါပြီ...")
             pending_groups.append(message.chat.id)
             await message.forward(CHECKER_BOT_ID)
             
     except Exception as e:
-        print(f"❌ Spawn ဖမ်းယူရာတွင် Error ဖြစ်နေပါသည်: {e}")
+        # Error တက်ခဲ့လျှင် Bot ရပ်မသွားစေရန်
+        pass
 
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
     try:
         global pending_groups
         msg_text = message.text or message.caption or ""
-        print(f"📩 Checker Bot ထံမှ စာပြန်ရောက်လာပါသည်: {msg_text[:30]}...")
+        print(f"📩 Checker မှ စာပြန်ရောက်လာပါသည်...")
         
         match = re.search(r"Full\s*:\s*(/catch\s+[^\n]+)", msg_text, re.IGNORECASE)
         
@@ -90,15 +90,30 @@ async def on_checker_reply(client, message):
             target_group = pending_groups.pop(0)
             print(f"📤 Group [{target_group}] သို့ ပို့လိုက်ပါပြီ: '{catch_cmd}'")
             await client.send_message(target_group, catch_cmd)
-        else:
-            print("⚠️ ပို့ရန် Group မရှိတော့ပါ သို့မဟုတ် Command ရှာမတွေ့ပါ။")
             
     except Exception as e:
         print(f"❌ Group သို့ စာပြန်ပို့ရာတွင် Error ဖြစ်နေပါသည်: {e}")
 
+async def main():
+    await pyrogram_app.start()
+    print("🔄 Userbot စတင်ပါပြီ။ မှတ်ဉာဏ် (Memory Cache) တည်ဆောက်နေပါသည်...")
+    try:
+        # Bot စတင်သည်နှင့် သင့်အကောင့်ရှိ Chat များကို ကြိုတင်ဖတ်မှတ်ထားမည် (Peer ID Error ဖြေရှင်းရန်)
+        async for _ in pyrogram_app.get_dialogs(limit=200):
+            pass
+        print("✅ မှတ်ဉာဏ် တည်ဆောက်ပြီးပါပြီ။ Peer ID Error လုံးဝ မတက်နိုင်တော့ပါ။")
+    except Exception as e:
+        print(f"⚠️ မှတ်ဉာဏ် တည်ဆောက်ရာတွင် အခက်အခဲရှိပါသည်: {e}")
+
+    print("🤖 Bot အပြည့်အဝ အလုပ်လုပ်နေပါပြီ (Spawn စောင့်နေပါသည်)...")
+    await idle()
+    await pyrogram_app.stop()
+
 if __name__ == "__main__":
+    # Flask နဲ့ Ping ကို သီးသန့် Run မည်
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=ping_self, daemon=True).start()
-    print("🤖 Userbot စတင် အလုပ်လုပ်နေပါပြီ (Logs များကို စောင့်ကြည့်ပါ)...")
-    pyrogram_app.run()
     
+    # Pyrogram Userbot ကို Event Loop ဖြင့် စတင်မည်
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
