@@ -42,6 +42,8 @@ async def on_spawn_message(client, message):
         if message.photo and any(kw in text for kw in spawn_keywords):
             print(f"🎯 Group [{chat_id}] တွင် Spawn တွေ့ပါပြီ! Checker သို့ Forward လုပ်နေသည်...")
             pending_groups.append(chat_id)
+            # send_message (သို့) forward လုပ်သည့်အခါ Peer ID Error မတက်စေရန် get_chat သုံးပြီး cache လုပ်မည်
+            await client.get_chat(chat_id)
             await message.forward(CHECKER_BOT_ID)
     except Exception as e:
         print(f"❌ Spawn Error: {e}")
@@ -81,9 +83,18 @@ async def on_checker_reply(client, message):
 
 async def main():
     port = int(os.environ.get("PORT", 10000))
-    print("🤖 Pyrogram Userbot နှင့် Flask Server စတင်နေပါပြီ...")
+    print("🤖 Pyrogram Userbot စတင်နေပါပြီ...")
     
     await pyrogram_app.start()
+    
+    # Userbot ရောက်ရှိနေသော Group များနှင့် Dialogs များကို Cache တည်ဆောက်မည် (Peer ID Error ကာကွယ်ရန်)
+    print("🔄 Group များနှင့် Chat များကို Cache လုပ်နေပါပြီ...")
+    try:
+        async for _ in pyrogram_app.get_dialogs():
+            pass
+        print("✅ Cache တည်ဆောက်ပြီးပါပြီ။ Bot အသင့်ဖြစ်ပါပြီ။")
+    except Exception as e:
+        print(f"⚠️ Cache Error: {e}")
     
     import hypercorn.asyncio
     from hypercorn.config import Config
@@ -91,7 +102,6 @@ async def main():
     config = Config()
     config.bind = [f"0.0.0.0:{port}"]
     
-    # Flask Server နှင့် Pyrogram Idle တို့ကို ပူးတွဲ Run မည်
     await asyncio.gather(
         hypercorn.asyncio.serve(app_flask, config),
         idle()
@@ -100,4 +110,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+
