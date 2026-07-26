@@ -17,8 +17,8 @@ SPAWN_GROUPS = [-1003854698282, -1001947407820, -1003067509608]
 # Forward လုပ်ရမည့် Checker Bot ID
 CHECKER_BOT_ID = 8506436817
 
-# Spawn တောင်းဆိုထားသည့် Group ID များကို မှတ်ထားမည့် Queue
-pending_groups = []
+# Forward လုပ်ထားသော မက်ဆေ့ခ်ျ ID နှင့် Group ID ကို မှတ်သားမည့် Dictionary
+forwarded_messages = {}
 
 # Flask App (Render Web Service အတွက်)
 app_flask = Flask(__name__)
@@ -57,22 +57,28 @@ pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, ses
 async def on_spawn_message(client, message):
     text = (message.text or message.caption or "").lower()
     
-    # Bot နှစ်မျိုးစလုံးရဲ့ Spawn / Waifu ထွက်လာသည့် ပုံစံများကို စစ်ဆေးခြင်း
-    if message.photo and any(keyword in text for keyword in ["spawn", "appeared", "harem", "waifu", "grab", "catch"]):
-        print(f"📥 Group [{message.chat.id}] တွင် Character/Waifu တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေသည်...")
-        pending_groups.append(message.chat.id)
+    # Spawn သို့မဟုတ် Waifu ပုံများ ဝင်လာခြင်းကို စစ်ဆေးမည်
+    if message.photo and any(kw in text for kw in ["spawn", "appeared", "harem", "waifu", "grab", "catch"]):
+        print(f"📥 Group [{message.chat.id}] တွင် Character တွေ့ပါသဖြင့် Checker သို့ Forward လုပ်နေသည်...")
         try:
-            await message.forward(CHECKER_BOT_ID)
+            fwd_msg = await message.forward(CHECKER_BOT_ID)
+            forwarded_messages[fwd_msg.id] = message.chat.id
         except Exception as e:
             print(f"❌ Forward Error: {e}")
 
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
-    global pending_groups
     msg_text = message.text or message.caption or ""
     
-    # Checker Bot ရဲ့ အဖြေမှ /catch သို့မဟုတ် /grab ကွန်မန်ကို ရှာဖွေခြင်း
-    match = re.search(r"((?:/catch|/grab|/guess)\s+[^\n]+)", msg_text, re.IGNORECASE)
+    target_group = None
+    if message.reply_to_message:
+        target_group = forwarded_messages.get(message.reply_to_message.id)
+
+    if not target_group and forwarded_messages:
+        target_group = list(forwarded_messages.values())[-1]
+
+    # Checker Bot မှ ပို့ပေးသော Full / catch / grab ကွန်မန်များကို ရှာဖွေခြင်း
+    match = re.search(r"((?:/catch|/grab|/check)\s+[^\n]+)", msg_text, re.IGNORECASE)
     
     if match:
         catch_cmd = match.group(1).strip()
@@ -80,18 +86,16 @@ async def on_checker_reply(client, message):
         match_alt = re.search(r"(?:Full|Name|Character)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
         if match_alt:
             val = match_alt.group(1).strip()
-            if val.startswith("/") or val.startswith("!"):
-                catch_cmd = val
-            else:
-                catch_cmd = f"/grab {val}" if "grab" in msg_text.lower() else f"/catch {val}"
+            catch_cmd = val if val.startswith("/") else f"/catch {val}"
         else:
-            catch_cmd = f"/grab {msg_text.strip()}" if msg_text.strip() else None
+            catch_cmd = msg_text.strip() if msg_text.strip().startswith("/") else None
 
-    if catch_cmd and pending_groups:
-        target_group = pending_groups.pop(0)
+    if catch_cmd and target_group:
         print(f"📤 Group [{target_group}] သို့ ပို့လိုက်ပါပြီ: '{catch_cmd}'")
         try:
             await client.send_message(target_group, catch_cmd)
+            if message.reply_to_message and message.reply_to_message.id in forwarded_messages:
+                del forwarded_messages[message.reply_to_message.id]
         except Exception as e:
             print(f"❌ Message send Error: {e}")
 
