@@ -1,9 +1,7 @@
 import os
 import re
-import threading
-import time
-import requests
-from flask import Flask
+import asyncio
+from flask import Flask, jsonify
 from pyrogram import Client, filters
 
 API_ID = int(os.environ.get("API_ID", "38612444"))
@@ -13,7 +11,6 @@ CHECKER_BOT_ID = 8506436817
 
 pending_groups = []
 
-# Flask App (Render Web Service အတွက်)
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
@@ -24,23 +21,12 @@ def home():
 def health():
     return "OK", 200
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app_flask.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-def ping_self():
-    time.sleep(15)
-    while True:
-        url = os.environ.get("RENDER_EXTERNAL_URL", "")
-        if url:
-            try:
-                requests.get(f"{url}/health", timeout=10)
-            except:
-                pass
-        time.sleep(50)
-
-# Pyrogram Client Setup
-pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
+pyrogram_app = Client(
+    "autocatch_userbot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    session_string=SESSION_STRING
+)
 
 @pyrogram_app.on_message()
 async def on_spawn_message(client, message):
@@ -51,8 +37,9 @@ async def on_spawn_message(client, message):
         chat_id = message.chat.id
         text = (message.text or message.caption or "").lower()
         
-        # Group ထဲတွင် Spawn တွေ့ရှိပါက
-        if message.photo and any(kw in text for kw in ["appeared", "spawned", "character", "harem", "guess", "catch"]):
+        spawn_keywords = ["appeared", "spawned", "character", "harem", "guess", "catch", "grab", "waifu", "hurry"]
+        
+        if message.photo and any(kw in text for kw in spawn_keywords):
             print(f"🎯 Group [{chat_id}] တွင် Spawn တွေ့ပါပြီ! Checker သို့ Forward လုပ်နေသည်...")
             pending_groups.append(chat_id)
             await message.forward(CHECKER_BOT_ID)
@@ -67,7 +54,7 @@ async def on_checker_reply(client, message):
         print(f"📩 Checker Reply:\n{msg_text}")
         
         cmd_to_send = None
-        match_cmd = re.search(r"((?:/catch|/guess|/hunt|/collect)\s+[^\n]+)", msg_text, re.IGNORECASE)
+        match_cmd = re.search(r"((?:/catch|/guess|/grab|/hunt|/collect)\s+[^\n]+)", msg_text, re.IGNORECASE)
         if match_cmd:
             cmd_to_send = match_cmd.group(1).strip()
         else:
@@ -77,7 +64,12 @@ async def on_checker_reply(client, message):
                 if raw_val.startswith("/") or raw_val.startswith("!"):
                     cmd_to_send = raw_val
                 else:
-                    prefix = "/guess" if "guess" in msg_text.lower() else "/catch"
+                    if "grab" in msg_text.lower():
+                        prefix = "/grab"
+                    elif "guess" in msg_text.lower():
+                        prefix = "/guess"
+                    else:
+                        prefix = "/catch"
                     cmd_to_send = f"{prefix} {raw_val}"
 
         if cmd_to_send and pending_groups:
@@ -87,17 +79,27 @@ async def on_checker_reply(client, message):
     except Exception as e:
         print(f"❌ Checker Reply Error: {e}")
 
-def run_telegram_bot():
-    print("🤖 Pyrogram Userbot စတင် ချိတ်ဆက်နေပါပြီ...")
-    pyrogram_app.run()
+async def main():
+    # Flask ကို Background မှာ အလုပ်လုပ်စေရန် Web Server Port ချိတ်ဆက်ခြင်း
+    port = int(os.environ.get("PORT", 10000))
+    
+    print("🤖 Pyrogram Userbot နှင့် Flask Server စတင်နေပါပြီ...")
+    await pyrogram_app.start()
+    
+    # Render ရှင်သန်စေရန် Flask ကို background task အဖြစ် run မည်
+    import hypercorn.asyncio
+    from hypercorn.config import Config
+    
+    config = Config()
+    config.bind = [f"0.0.0.0:{port}"]
+    
+    # Pyrogram နှင့် Flask နှစ်ခုစလုံးကို တစ်ပြိုင်နက်တည်း အလုပ်လုပ်စေခြင်း
+    await asyncio.gather(
+        hypercorn.asyncio.serve(app_flask, config),
+        pyrogram_app.idle()
+    )
+    await pyrogram_app.stop()
 
 if __name__ == "__main__":
-    # 1. Flask Web Server ကို Thread ဖြင့် Run မည်
-    threading.Thread(target=run_flask, daemon=True).start()
-    
-    # 2. Render မအိပ်စေရန် Self-ping ကို Thread ဖြင့် Run မည်
-    threading.Thread(target=ping_self, daemon=True).start()
-    
-    # 3. Telegram Userbot ကို ပင်မ Thread တွင် Run မည်
-    run_telegram_bot()
-    
+    asyncio.run(main())
+
