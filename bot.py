@@ -12,9 +12,6 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 CHECKER_BOT_ID = 8506436817
 
-# ပေးထားသော Group ID နှစ်ခုကိုသာ သတ်မှတ်ထားပါသည်
-TARGET_GROUPS = [-1001947407820, -1003067509608]
-
 # Memory Caches
 active_mapping = {}      
 text_to_group = {}       
@@ -48,18 +45,21 @@ def ping_self():
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
 # ==========================================
-# ၁။ Automatic System (သတ်မှတ်ထားသော Target Group နှစ်ခုအတွင်းရှိ ပုံနှင့်စာများကို အတိအကျ ဖမ်းယူမည်)
+# ၁။ Universal Automatic System (Group တိုင်းရှိ ပုံမှန် မက်ဆေ့ချ်များကို လုံးဝမလွတ်တမ်း ဖမ်းယူမည်)
 # ==========================================
-@pyrogram_app.on_message(filters.chat(TARGET_GROUPS) & (filters.photo | filters.document))
-async def auto_spawn_listener(client, message):
+@pyrogram_app.on_message(filters.group & (filters.photo | filters.document))
+async def universal_auto_listener(client, message):
+    # Bot ကိုယ်တိုင် ပို့တာတွေကို ဖယ်ရှားရန်
+    if message.from_user and message.from_user.is_self:
+        return
+
     text = (message.caption or message.text or "").lower()
-    
-    print(f"🔍 [Target Group Message] Chat ID: {message.chat.id} | Text: {text[:40]}...")
+    print(f"🔍 [Group Detected] Chat ID: {message.chat.id} | Text: {text[:40]}...")
 
     if not text:
         return
 
-    # Spawn ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+    # Spawn သို့မဟုတ် Character ဆိုင်ရာ စာသားပါမပါ စစ်ဆေးခြင်း
     keywords = ["waifu", "husbando", "grab", "spawned", "catch", "character", "harem", "spawn"]
     is_spawn = any(kw in text for kw in keywords)
     
@@ -67,14 +67,13 @@ async def auto_spawn_listener(client, message):
         return
 
     use_grab = any(kw in text for kw in ["waifu", "husbando", "grab"])
-
     group_id = message.chat.id
     snippet = text.replace('\n', ' ')[:50].strip()
 
     text_to_group[snippet] = group_id
     text_to_grab[snippet] = use_grab
 
-    print(f"\n⚡ [Auto Success] Group ({group_id}) တွင် Spawn တွေ့ရှိပါပြီ! Checker ဆီသို့ ပို့နေပါပြီ...")
+    print(f"\n⚡ [Auto Triggered] Group ({group_id}) တွင် Spawn တွေ့ရှိပါပြီ! Checker ဆီ ပို့နေပါပြီ...")
 
     target_checker_msg_id = None
     try:
@@ -99,17 +98,21 @@ async def auto_spawn_listener(client, message):
 
 
 # ==========================================
-# ၂. Manual / Hand System (မူလအတိုင်း အသေထားရှိသည်)
+# ၂. Manual / Hand System (ကိုယ့်ဖက်က ဝင်ပို့သည့်အခါ)
 # ==========================================
-@pyrogram_app.on_message(filters.chat(CHECKER_BOT_ID) & filters.outgoing)
+@pyrogram_app.on_message(filters.outgoing)
 async def manual_forward_listener(client, message):
+    # Checker Bot ဆီ ပို့လိုက်သော မက်ဆေ့ချ်များကိုသာ စစ်ဆေးမည်
+    if message.chat.id != CHECKER_BOT_ID:
+        return
+
     text = (message.caption or message.text or "").lower()
     snippet = text.replace('\n', ' ')[:50].strip()
 
     target_group = None
     use_grab = "waifu" in text or "husbando" in text or "grab" in text
 
-    if message.forward_from_chat and message.forward_from_chat.id in TARGET_GROUPS:
+    if message.forward_from_chat:
         target_group = message.forward_from_chat.id
     elif snippet in text_to_group:
         target_group = text_to_group[snippet]
@@ -117,7 +120,7 @@ async def manual_forward_listener(client, message):
 
     if target_group:
         active_mapping[message.id] = (target_group, use_grab)
-        print(f"📥 [Hand] Manual Forward မှတ်သားပြီးပါပြီ -> Group ID: {target_group} | Grab: {use_grab}")
+        print(f"📥 [Hand] Manual Forward မှတ်သားပြီးပါပြီ -> Target Group ID: {target_group} | Grab: {use_grab}")
 
 
 # ==========================================
