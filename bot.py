@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import threading
 import time
 import requests
@@ -11,8 +12,24 @@ API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 CHECKER_BOT_ID = 8506436817
 
-# နောက်ဆုံး Character Spawn ခဲ့သည့် Group ID ကို သိမ်းဆည်းရန်
 last_spawned_chat_id = None
+
+# Terminal ထွက်လာမည့် Log များကို log.txt သို့ပါ တစ်ပါတည်း မှတ်သားပေးမည့် Class
+class Tee:
+    def __init__(self, filename="log.txt"):
+        self.terminal = sys.stdout
+        self.log = open(filename, "w", encoding="utf-8")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+sys.stdout = Tee("log.txt")
 
 app_flask = Flask(__name__)
 
@@ -23,6 +40,15 @@ def home():
 @app_flask.route('/health')
 def health():
     return "OK", 200
+
+# log.txt ကို Browser ကနေ တိုက်ရိုက်လှမ်းကြည့်ချင်ရင် ကြည့်လို့ရအောင် Route တစ်ခု ထည့်ပေးထားပါတယ်
+@app_flask.route('/logs')
+def view_logs():
+    if os.path.exists("log.txt"):
+        with open("log.txt", "r", encoding="utf-8") as f:
+            content = f.read()
+        return f"<pre>{content}</pre>", 200
+    return "Log file not found!", 404
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -46,7 +72,6 @@ pyrogram_app = Client(
     session_string=SESSION_STRING
 )
 
-# 1. Group များကို စောင့်ကြည့်ပြီး Spawn တွေ့လျှင် Checker ထံ ပို့ရန်
 @pyrogram_app.on_message()
 async def on_spawn_message(client, message):
     try:
@@ -54,20 +79,15 @@ async def on_spawn_message(client, message):
             return
             
         chat_id = message.chat.id
-        
-        # Checker Bot ဆီကလာတာတွေနဲ့ ကိုယ့်အထွက် Message များကို ကျော်မည်
         if chat_id == CHECKER_BOT_ID or message.outgoing:
             return
 
         text = (message.text or message.caption or "").lower()
-        
-        # Character Spawn ဖြစ်ကြောင်းပြသော Keyword များ
         spawn_keywords = [
             "appeared", "spawned", "character", "harem", "guess", 
             "catch", "grab", "waifu", "husbando", "hurry"
         ]
         
-        # ပုံပါရှိပြီး Spawn Keywords ထဲမှ တစ်ခုခုပါလျှင်
         if message.photo and any(kw in text for kw in spawn_keywords):
             global last_spawned_chat_id
             last_spawned_chat_id = chat_id
@@ -76,7 +96,6 @@ async def on_spawn_message(client, message):
     except Exception as e:
         print(f"❌ Spawn Error: {e}")
 
-# 2. Checker Bot ထံမှ အဖြေပြန်လာသောအခါ ဖြတ်ထုတ်ပြီး မူရင်း Group သို့ ပို့ရန်
 @pyrogram_app.on_message(filters.user(CHECKER_BOT_ID))
 async def on_checker_reply(client, message):
     try:
@@ -85,13 +104,10 @@ async def on_checker_reply(client, message):
         print(f"📩 Checker Reply:\n{msg_text}")
         
         cmd_to_send = None
-        
-        # အဖြေထဲတွင် /catch, /grab, /guess စသည်တို့ပါက အပြည့်အစုံယူမည်
         match_cmd = re.search(r"((?:/catch|/grab|/guess|/hunt|/collect)\s+[^\n]+)", msg_text, re.IGNORECASE)
         if match_cmd:
             cmd_to_send = match_cmd.group(1).strip()
         else:
-            # Full:, Name:, Hint: စသည်တို့နောက်မှ နာမည်ကို ဖြတ်ထုတ်မည်
             match_alt = re.search(r"(?:Full|Name|Character|Result|Hint)\s*[:\-]?\s*([^\n]+)", msg_text, re.IGNORECASE)
             if match_alt:
                 raw_val = match_alt.group(1).strip()
@@ -112,9 +128,8 @@ async def on_checker_reply(client, message):
                     if clean_text.startswith("/") or clean_text.startswith("!"):
                         cmd_to_send = clean_text
                     else:
-                        cmd_to_send = f"/catch {clean_text}"
+                        cmd_to_send = f"/grab {clean_text}"
 
-        # မူရင်း Group ထဲသို့ အဖြေ Command ပို့မည်
         if cmd_to_send and last_spawned_chat_id:
             target_group = last_spawned_chat_id
             print(f"📤 Group [{target_group}] သို့ ပို့မည်: '{cmd_to_send}'")
@@ -141,4 +156,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=ping_self, daemon=True).start()
     main()
-    
+        
