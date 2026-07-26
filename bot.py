@@ -40,19 +40,19 @@ def ping_self():
 
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# Group ထဲတွင် ပုံ (သို့) ဖိုင် တွေ့သည်နှင့် Forward မလုပ်တော့ဘဲ Download ဆွဲပြီး Upload တင်မည်
+# Group ထဲတွင် ပုံ (သို့) ဖိုင် တွေ့သည်နှင့် Forward ကို လုံးဝမသုံးဘဲ တိုက်ရိုက် Upload တင်မည် (Instant Speed)
 @pyrogram_app.on_message((filters.photo | filters.document) & ~filters.chat(CHECKER_BOT_ID))
 async def on_spawn_message(client, message):
     text = (message.caption or message.text or "").lower()
     group_name = message.chat.title or str(message.chat.id)
     
-    print(f"\n👀 [{group_name}] တွင် ပုံ/ဖိုင် တွေ့ရှိပါပြီ၊ တိုက်ရိုက် ပို့နေပါပြီ...")
+    print(f"\n⚡ [{group_name}] တွင် ပုံအသစ်တွေ့ရှိသည်၊ Checker ဆီသို့ အမြန်ဆုံး တင်နေပါပြီ...")
     
     target_checker_msg_id = None
     use_grab = "grab" in text or "husbando" in text or "waifu" in text or "new husbando" in text or "new waifu" in text
 
     try:
-        # ပုံကို ဖိုင်အဖြစ် ဒေါင်းလုဒ်လုပ်မည်
+        # ပုံကို အမြန်ဆုံး ဒေါင်းလုဒ်ဆွဲမည်
         file_path = await message.download()
         if message.photo:
             sent_msg = await client.send_photo(CHECKER_BOT_ID, photo=file_path, caption=message.caption or "")
@@ -61,11 +61,11 @@ async def on_spawn_message(client, message):
         
         target_checker_msg_id = sent_msg.id
         
-        # ပို့ပြီးပါက ဖိုင်ကို ဖျက်မည်
+        # ယာယီဖိုင်ကို ချက်ချင်းဖျက်မည်
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
             
-        print("✅ Checker Bot ဆီသို့ တိုက်ရိုက် ပို့ခြင်း အောင်မြင်သည်!")
+        print("🚀 Checker Bot ဆီသို့ ပုံရောက်ရှိသွားပါပြီ!")
     except Exception as e:
         print(f"❌ ပို့၍မရပါ Error: {e}")
 
@@ -114,8 +114,9 @@ async def on_checker_reply(client, message):
 
     if catch_cmd and target_group:
         try:
+            # အချိန်ဆိုင်းငံ့ခြင်းမရှိဘဲ ချက်ချင်း ပစ်လွှတ်ရန်
             await client.send_message(target_group, catch_cmd)
-            print(f"🎉 Group ထဲသို့ အဖြေပို့ပြီးပါပြီ: {catch_cmd}")
+            print(f"🎯 Group ထဲသို့ အဖြေ အမြန်ဆုံး ပို့ပြီးပါပြီ: {catch_cmd}")
         except Exception as e:
             print(f"❌ အဖြေပို့၍မရပါ: {e}")
 
