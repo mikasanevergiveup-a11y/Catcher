@@ -12,10 +12,10 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 CHECKER_BOT_ID = 8506436817
 
-# Memory Caches (Group တိုင်းအတွက် အလိုအလျောက် မှတ်သားမည့်နေရာ)
-active_mapping = {}      # Checker Message ID နဲ့ Group ကို ချိတ်ဆက်ရန်
-text_to_group = {}       # Manual Forward အတွက် စာသားနဲ့ Group ကို ချိတ်ဆက်ရန်
-text_to_grab = {}        # Grab လား Catch လား ခွဲခြားရန်
+# Memory Caches
+active_mapping = {}      
+text_to_group = {}       
+text_to_grab = {}        
 
 app_flask = Flask(__name__)
 
@@ -45,54 +45,55 @@ def ping_self():
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
 # ==========================================
-# ၁။ Automatic System (Account joinထားသည့် Group တိုင်းတွင် အလုပ်လုပ်မည်)
+# ၁။ Automatic System (Group ထဲမှ ပုံနှင့်စာများကို သေချာဖမ်းယူပေးမည်)
 # ==========================================
-@pyrogram_app.on_message(filters.group & (filters.photo | filters.document))
+@pyrogram_app.on_message(filters.incoming & (filters.photo | filters.document))
 async def auto_spawn_listener(client, message):
+    # Group ဟုတ်မဟုတ် Chat ID (ငွေကြေး/အနုတ်လက္ခဏာ) ဖြင့် အတိအကျ စစ်ဆေးမည်
+    if not message.chat or message.chat.id >= 0:
+        return
+
     text = (message.caption or message.text or "").lower()
+    
+    # Debug ကို Render Logs ထဲတွင် ကြည့်ရန်
+    print(f"🔍 [Group Message Detected] Chat ID: {message.chat.id} | Text: {text[:40]}...")
+
     if not text:
         return
 
-    # Spawn စာသား ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-    is_spawn = False
-    use_grab = False
-
-    if "waifu" in text or "husbando" in text or "grab" in text:
-        is_spawn = True
-        use_grab = True
-    elif "spawned" in text or "catch" in text:
-        is_spawn = True
-        use_grab = False
-
+    # Spawn ဟုတ်မဟုတ် ကျယ်ကျယ်ပြန့်ပြန့် စစ်ဆေးခြင်း
+    keywords = ["waifu", "husbando", "grab", "spawned", "catch", "character", "harem", "spawn"]
+    is_spawn = any(kw in text for kw in keywords)
+    
     if not is_spawn:
         return
+
+    use_grab = any(kw in text for kw in ["waifu", "husbando", "grab"])
 
     group_id = message.chat.id
     snippet = text.replace('\n', ' ')[:50].strip()
 
-    # Manual Forward အတွက်ပါ တစ်ခါတည်း မှတ်ထားမည်
     text_to_group[snippet] = group_id
     text_to_grab[snippet] = use_grab
 
-    print(f"\n⚡ [Auto] Group ({message.chat.title or group_id}) တွင် Spawn တွေ့ရှိသည် Checker ဆီ ပို့နေပါပြီ...")
+    print(f"\n⚡ [Auto Success] Group ({message.chat.title or group_id}) တွင် Spawn တွေ့ရှိပါပြီ! Checker ဆီသို့ ပို့နေပါပြီ...")
 
     target_checker_msg_id = None
     try:
         fwd = await message.forward(CHECKER_BOT_ID)
         target_checker_msg_id = fwd.id
         print("✅ Auto-Forward အောင်မြင်သည်!")
-    except Exception:
+    except Exception as e1:
         try:
             cpy = await message.copy(CHECKER_BOT_ID)
             target_checker_msg_id = cpy.id
             print("✅ Auto-Copy အောင်မြင်သည်!")
-        except Exception as e:
-            print(f"❌ Auto ပို့၍မရပါ (Hand စနစ်ဖြင့် Forward နိုင်သည်): {e}")
+        except Exception as e2:
+            print(f"❌ Auto ပို့၍မရပါ Error: {e1} | {e2}")
 
     if target_checker_msg_id:
         active_mapping[target_checker_msg_id] = (group_id, use_grab)
 
-    # Memory မပြည့်စေရန် ရှင်းလင်းခြင်း
     if len(active_mapping) > 200:
         active_mapping.pop(next(iter(active_mapping)))
     if len(text_to_group) > 200:
@@ -100,7 +101,7 @@ async def auto_spawn_listener(client, message):
 
 
 # ==========================================
-# ၂. Manual / Hand System (အစ်ကို ကိုယ်တိုင် Forward လုပ်သည့်အခါ)
+# ၂. Manual / Hand System (ဘာမှမပြင်ဘဲ မူလအတိုင်း အသေထားရှိသည်)
 # ==========================================
 @pyrogram_app.on_message(filters.chat(CHECKER_BOT_ID) & filters.outgoing)
 async def manual_forward_listener(client, message):
@@ -110,10 +111,8 @@ async def manual_forward_listener(client, message):
     target_group = None
     use_grab = "waifu" in text or "husbando" in text or "grab" in text
 
-    # Telegram မှ Forward Source ပါလာလျှင် ယူမည်
     if message.forward_from_chat:
         target_group = message.forward_from_chat.id
-    # Source ဖျောက်ထားလျှင် Cache ထဲမှ ပြန်ရှာမည်
     elif snippet in text_to_group:
         target_group = text_to_group[snippet]
         use_grab = text_to_grab.get(snippet, use_grab)
@@ -124,20 +123,18 @@ async def manual_forward_listener(client, message):
 
 
 # ==========================================
-# ၃. Checker Bot Reply Handler (Auto & Hand နှစ်ခုစလုံးအတွက် အဖြေကို Group သို့ ပို့ပေးမည်)
+# ၃. Checker Bot Reply Handler (အဖြေကို မူလ Group ဆီသို့ အတိအကျ ပို့ပေးမည်)
 # ==========================================
 @pyrogram_app.on_message(filters.chat(CHECKER_BOT_ID) & filters.incoming)
 async def checker_reply_listener(client, message):
     target_group = None
     use_grab = False
 
-    # Reply ပြန်လာသော မက်ဆေ့ချ် ID ကို အခြေခံ၍ မူလ Group ကို ရှာမည်
     if message.reply_to_message:
         rep_id = message.reply_to_message.id
         if rep_id in active_mapping:
             target_group, use_grab = active_mapping[rep_id]
 
-    # အကယ်၍ ID မတိုက်ဆိုင်ပါက နောက်ဆုံး မှတ်ထားသည့် Group ကို သုံးမည်
     if not target_group and active_mapping:
         last_key = list(active_mapping.keys())[-1]
         target_group, use_grab = active_mapping[last_key]
@@ -149,7 +146,6 @@ async def checker_reply_listener(client, message):
     text = message.text or message.caption or ""
     character_name = ""
 
-    # Checker Bot ၏ အဖြေမှ နာမည်ကို ပုံစံအမျိုးမျိုးဖြင့် ရှာဖွေထုတ်ယူခြင်း
     match_name = re.search(r"NAME\s*[:\-]?\s*([^|\n]+)", text, re.IGNORECASE)
     match_full = re.search(r"Full\s*[:\-]?\s*/(?:catch|grab)\s+([^\n]+)", text, re.IGNORECASE)
     match_cmd = re.search(r"/(?:catch|grab)\s+([^\n]+)", text, re.IGNORECASE)
@@ -162,7 +158,6 @@ async def checker_reply_listener(client, message):
         character_name = match_cmd.group(1).strip()
 
     if character_name:
-        # Username များနှင့် အမှိုက်များကို ဖြတ်ထုတ်မည်
         character_name = re.sub(r"@[a-zA-Z0-9_]+bot", "", character_name, flags=re.IGNORECASE).strip()
         
         prefix = "/grab" if use_grab else "/catch"
