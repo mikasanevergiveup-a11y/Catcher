@@ -45,30 +45,39 @@ def ping_self():
 pyrogram_app = Client("autocatch_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
 # ==========================================
-# ၁။ Universal Automatic System (Group တိုင်းရှိ ပုံမှန် မက်ဆေ့ချ်များကို လုံးဝမလွတ်တမ်း ဖမ်းယူမည်)
+# ၁။ Fixed Auto System (စာသားများကို Entities ပါမကျန် အပြည့်အစုံ ဖတ်ပေးမည်)
 # ==========================================
 @pyrogram_app.on_message(filters.group & (filters.photo | filters.document))
-async def universal_auto_listener(client, message):
-    # Bot ကိုယ်တိုင် ပို့တာတွေကို ဖယ်ရှားရန်
+async def robust_auto_listener(client, message):
     if message.from_user and message.from_user.is_self:
         return
 
-    text = (message.caption or message.text or "").lower()
-    print(f"🔍 [Group Detected] Chat ID: {message.chat.id} | Text: {text[:40]}...")
+    # Caption သို့မဟုတ် Text ကို Entities များပါမကျန် အစအဆုံး ဆွဲထုတ်ခြင်း
+    raw_text = message.caption or message.text or ""
+    
+    # အကယ်၍ Caption မပါလာခဲ့လျှင်တောင် Message Object ထဲက entities များကို စာသားအဖြစ် ပြန်ဖော်မည်
+    if not raw_text and message.caption_entities:
+        raw_text = "".join([message.text[ent.offset:ent.offset+ent.length] for ent in message.caption_entities])
 
-    if not text:
-        return
+    text = raw_text.lower()
+    print(f"🔍 [Auto Scan] Group ID: {message.chat.id} | Read Text: {text[:60]}...")
 
-    # Spawn သို့မဟုတ် Character ဆိုင်ရာ စာသားပါမပါ စစ်ဆေးခြင်း
-    keywords = ["waifu", "husbando", "grab", "spawned", "catch", "character", "harem", "spawn"]
+    # Spawn ဟုတ်မဟုတ် သေချာစေရန် Keywords များကို ကျယ်ကျယ်ပြန့်ပြန့် စစ်ဆေးမည်
+    keywords = ["waifu", "husbando", "grab", "spawned", "catch", "character", "harem", "spawn", "chat!", "here"]
     is_spawn = any(kw in text for kw in keywords)
     
+    # အကယ်၍ Keyword မတွေ့ရင်တောင် ပုံနှင့်အတူ Bot တစ်ခုခုက ပို့ထားတာသေချာလျှင် အလိုအလျောက် ပို့ပေးရန် (Optional - လိုအပ်ပါက ဖွင့်နိုင်သည်)
+    if not is_spawn and message.from_user and message.from_user.is_bot:
+        is_spawn = True  # Bot က ပို့တဲ့ပုံမှန်န် ပုံမှန်ား Spawn ဖြစ်နိုင်ခြေများလို့ ဖမ်းမည်
+
     if not is_spawn:
         return
 
     use_grab = any(kw in text for kw in ["waifu", "husbando", "grab"])
     group_id = message.chat.id
     snippet = text.replace('\n', ' ')[:50].strip()
+    if not snippet:
+        snippet = "spawn_image_fallback"
 
     text_to_group[snippet] = group_id
     text_to_grab[snippet] = use_grab
@@ -98,11 +107,10 @@ async def universal_auto_listener(client, message):
 
 
 # ==========================================
-# ၂. Manual / Hand System (ကိုယ့်ဖက်က ဝင်ပို့သည့်အခါ)
+# ၂. Manual / Hand System (မူလအတိုင်း အကောင်းဆုံး အလုပ်လုပ်မည်)
 # ==========================================
 @pyrogram_app.on_message(filters.outgoing)
 async def manual_forward_listener(client, message):
-    # Checker Bot ဆီ ပို့လိုက်သော မက်ဆေ့ချ်များကိုသာ စစ်ဆေးမည်
     if message.chat.id != CHECKER_BOT_ID:
         return
 
