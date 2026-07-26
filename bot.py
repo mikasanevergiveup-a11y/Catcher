@@ -1,8 +1,8 @@
 import os
 import re
 import asyncio
-from flask import Flask, jsonify
-from pyrogram import Client, filters
+from flask import Flask
+from pyrogram import Client, filters, idle
 
 API_ID = int(os.environ.get("API_ID", "38612444"))
 API_HASH = os.environ.get("API_HASH", "49d750a1b3ae94cdec9a0df20535c3d9")
@@ -80,26 +80,24 @@ async def on_checker_reply(client, message):
         print(f"❌ Checker Reply Error: {e}")
 
 async def main():
-    # Flask ကို Background မှာ အလုပ်လုပ်စေရန် Web Server Port ချိတ်ဆက်ခြင်း
     port = int(os.environ.get("PORT", 10000))
-    
     print("🤖 Pyrogram Userbot နှင့် Flask Server စတင်နေပါပြီ...")
+    
     await pyrogram_app.start()
     
-    # Render ရှင်သန်စေရန် Flask ကို background task အဖြစ် run မည်
     import hypercorn.asyncio
     from hypercorn.config import Config
     
     config = Config()
     config.bind = [f"0.0.0.0:{port}"]
     
-    # Pyrogram နှင့် Flask နှစ်ခုစလုံးကို တစ်ပြိုင်နက်တည်း အလုပ်လုပ်စေခြင်း
+    # Flask Server နှင့် Pyrogram Idle တို့ကို ပူးတွဲ Run မည်
     await asyncio.gather(
         hypercorn.asyncio.serve(app_flask, config),
-        pyrogram_app.idle()
+        idle()
     )
     await pyrogram_app.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
+    
