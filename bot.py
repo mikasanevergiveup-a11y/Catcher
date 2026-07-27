@@ -29,10 +29,10 @@ if not API_ID or not API_HASH or not SESSION_STRING:
 API_ID = int(API_ID)
 
 # Target Groups 3 ခု နှင့် Card Reader Bot ID
-TARGET_CHATS = [-1001947407820 , -1003854698282 ]
+TARGET_CHATS = [-1001947407820, -1003854698282]
 CARD_READER_BOT_ID = 8506436817
 
-# နောက်ဆုံး Spawn ခဲ့သော (သို့) ကိုယ်တိုင် Forward ခဲ့သော Group ID ကို မှတ်သားရန်
+# နောက်ဆုံး Spawn ခဲ့သော Group ID ကို မှတ်သားရန်
 LAST_CHAT_ID = TARGET_CHATS[0]
 
 # Pyrogram Client
@@ -70,18 +70,17 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# 🕒 ၃ မိနစ် (၁၈၀ စက္ကန့်) တစ်ခါ Auto Restart ချပေးမည့် Function
+# 🕒 ၃ မိနစ် (၁၈၀ စက္ခတ်) တစ်ခါ Auto Restart ချပေးမည့် Function
 def auto_restart_system():
     time.sleep(180)
     logger.info("🔄 ၃ မိနစ်ပြည့်သွားပါပြီ။ Bot ကို Auto Restart ချနေပါသည်...")
-    # Script ကို ချက်ချင်း အသစ်ပြန် Run မည် (Downtime အနည်းဆုံးဖြစ်စေရန်)
     os.execv(sys.executable, ['python'] + sys.argv)
 
 # =========================================================
 # PYROGRAM EVENT HANDLERS
 # =========================================================
 
-# 🟢 [TEST COMMAND] Bot အလုပ်လုပ်သလား နှင့် Group ID စစ်ဆေးရန်
+# 🟢 [TEST COMMAND]
 @app_client.on_message(filters.me & filters.command("ping", prefixes="."))
 async def ping_command(client, message):
     await message.reply_text(f"🏓 **Pong! Bot is perfectly alive.**\n📁 ဒီ Group ရဲ့ ID မှာ: `{message.chat.id}` ဖြစ်ပါတယ်။")
@@ -93,16 +92,22 @@ async def auto_forward_spawns(client, message):
     try:
         text = str(message.caption or message.text or "").lower()
         
-        # ပုံပါလာလျှင် (သို့) Spawn စာသားပါလာလျှင် ဖမ်းမည်
-        is_spawn = bool(message.photo) or any(kw in text for kw in [
-            "spawn", "waifu", "husbando", "harem", "/catch", "/grab", "appeared"
-        ])
+        # 📌 ပုံပါလာပြီး ပုံတွေထဲက Spawn စာသားအမျိုးအစား အားလုံးကို စစ်ဆေးမည်
+        spawn_keywords = [
+            "a character has spawned", 
+            "new waifu is here", 
+            "new husbando is here",
+            "grab using",
+            "catch using"
+        ]
+        
+        is_spawn = bool(message.photo) and any(kw in text for kw in spawn_keywords)
         
         if is_spawn:
             LAST_CHAT_ID = message.chat.id
-            logger.info(f"⚡ [AUTO] Group ({LAST_CHAT_ID}) မှ Spawn တွေ့ရှိပါသည်။ Card Reader ဆီသို့ Forward နေပါပြီ...")
+            logger.info(f"⚡ [AUTO] Group ({LAST_CHAT_ID}) မှ Spawn အစစ် တွေ့ရှိပါသည်။ Card Reader ဆီသို့ Forward နေပါပြီ...")
             
-            # Message ကို Card Reader ဆီ တိုက်ရိုက် Forward မည်
+            # Card Reader ဆီသို့ တိုက်ရိုက် Forward မည်
             await client.forward_messages(
                 chat_id=CARD_READER_BOT_ID,
                 from_chat_id=message.chat.id,
@@ -110,38 +115,33 @@ async def auto_forward_spawns(client, message):
             )
             
     except FloodWait as e:
+        logger.warning(f"⚠️ Telegram မှ {e.value} စက္ကန့် စောင့်ခိုင်းထားပါသည်။")
         await asyncio.sleep(e.value)
     except Exception as e:
         logger.error(f"❌ Auto Forward Error: {e}")
 
-# ၂။ HAND SYSTEM (ကိုယ်တိုင် Forward လျှင် Group ID ကို ခြေရာခံမည်)
+# ၂. HAND SYSTEM (ကိုယ်တိုင် Forward လျှင် Group ID ကို ခြေရာခံမည်)
 @app_client.on_message(filters.me & filters.chat(CARD_READER_BOT_ID))
 async def hand_tracker(client, message):
     global LAST_CHAT_ID
     try:
-        # သင်ကိုယ်တိုင် Group ကနေ Forward တာဖြစ်ရင်
         if message.forward_from_chat and message.forward_from_chat.id in TARGET_CHATS:
             LAST_CHAT_ID = message.forward_from_chat.id
             logger.info(f"🖐️ [HAND] သင်ကိုယ်တိုင် Group ({LAST_CHAT_ID}) မှ Forward လိုက်သည်ကို မှတ်သားထားပါပြီ။")
     except Exception as e:
-        logger.error(f"❌ Hand Tracker Error: {e}")
+    def dummy(): pass
 
-# ၃။ COMMAND ပို့ခြင်း (Card Reader မှ ပြန်လာသော စာကို Group ထဲ ပြန်ပို့မည်)
+# ၃။ COMMAND ပြန်လည်ပို့ခြင်း (Card Reader မှ ပြန်လာသော စာကို Spawn တဲ့ Group ထဲ ပြန်ပို့မည်)
 @app_client.on_message(filters.chat(CARD_READER_BOT_ID) & filters.incoming)
 async def send_command_to_group(client, message):
     global LAST_CHAT_ID
     try:
         text = str(message.text or message.caption or "")
-        text_lower = text.lower()
         
-        # Card Reader ဆီမှ /catch သို့မဟုတ် /grab ပါလာပါက
-        if "/catch" in text_lower or "/grab" in text_lower:
-            logger.info(f"🤖 Card Reader မှ ပြန်လာပါသည်။ Group ({LAST_CHAT_ID}) ထဲသို့ '{text}' ကို ပြန်ပို့နေပါပြီ...")
-            
-            # မှတ်သားထားသော Group ထဲသို့ Command အလိုအလျောက်ပို့မည်
+        if text:
+            logger.info(f"🤖 Card Reader မှ စာရောက်လာပါပြီ။ Group ({LAST_CHAT_ID}) ထဲသို့ ပို့နေပါပြီ...")
             await client.send_message(LAST_CHAT_ID, text)
-            
-            logger.info(f"🚀 [SUCCESS] Group ထဲသို့ အောင်မြင်စွာ ပို့လိုက်ပါပြီ။")
+            logger.info(f"🚀 [SUCCESS] Group ({LAST_CHAT_ID}) ထဲသို့ အောင်မြင်စွာ ပို့လိုက်ပါပြီ။")
 
     except FloodWait as e:
         await asyncio.sleep(e.value)
@@ -156,12 +156,11 @@ async def main():
     logger.info("🔄 Group ID မှတ်ဉာဏ်များ (Cache) စတင်သွင်းယူနေပါသည်...")
     
     try:
-        # Peer ID Error မတက်စေရန် Dialogs များကို ကြိုဖတ်ထားမည်
         async for _ in app_client.get_dialogs(limit=200):
             pass
         logger.info("✅ Cache လုပ်ခြင်း ပြီးဆုံးပါပြီ။")
     except Exception as e:
-        logger.warning(f"⚠️ Cache သွင်းယူရာတွင် Error (ကျော်သွားပါမည်): {e}")
+        logger.warning(f"⚠️ Cache သွင်းယူရာတွင် Error: {e}")
 
     logger.info("🤖 Bot သည် အပြည့်အဝ အလုပ်လုပ်နေပါပြီ! Spawn များကို စောင့်ကြည့်နေပါသည်...")
     await idle()
@@ -175,12 +174,10 @@ if __name__ == "__main__":
     print("✨ Character Catcher Bot Started Cleanly!")
     print("=" * 50)
 
-    # Flask, Ping နှင့် Restart system များကို နောက်ကွယ်မှ Run မည်
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=ping_self, daemon=True).start()
     threading.Thread(target=auto_restart_system, daemon=True).start()
 
-    # Pyrogram ၏ Async Main Loop ကို လုံခြုံစွာ Run မည်
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
-    
+
