@@ -28,7 +28,7 @@ if not API_ID or not API_HASH or not SESSION_STRING:
 
 API_ID = int(API_ID)
 
-# Target Groups (ပေးထားသော Group ID အသစ်များ) နှင့် Card Reader Bot ID
+# Target Groups နှင့် Card Reader Bot ID
 TARGET_CHATS = [-1001947407820, -1003854698282]
 CARD_READER_BOT_ID = 8506436817
 
@@ -58,7 +58,6 @@ def health():
 
 def ping_self():
     time.sleep(10)
-    # ပေးထားသော Render URL အသစ်ကို အသုံးပြုထားသည်
     url = os.environ.get("RENDER_EXTERNAL_URL", "https://catcher-16m2.onrender.com")
     while True:
         try:
@@ -130,7 +129,7 @@ async def hand_tracker(client, message):
     except Exception as e:
         logger.error(f"❌ Hand Tracker Error: {e}")
 
-# ၃။ COMMAND ပြန်လည်ပို့ခြင်း (Card Reader မှ ပြန်လာသော စာကို Spawn တဲ့ Group ထဲ ပြန်ပို့မည်)
+# ၃။ COMMAND ပြန်လည်ပို့ခြင်း (Card Reader မှ Hint ကိုသာ ဖြတ်ထုတ်ပြီး Group ထဲ ပို့မည်)
 @app_client.on_message(filters.chat(CARD_READER_BOT_ID) & filters.incoming)
 async def send_command_to_group(client, message):
     global LAST_CHAT_ID
@@ -138,8 +137,20 @@ async def send_command_to_group(client, message):
         text = str(message.text or message.caption or "")
         
         if text:
-            logger.info(f"🤖 Card Reader မှ စာရောက်လာပါပြီ။ Group ({LAST_CHAT_ID}) ထဲသို့ ပို့နေပါပြီ...")
-            await client.send_message(LAST_CHAT_ID, text)
+            final_text = text
+            lines = text.split("\n")
+            
+            # "Hint :" ပါသော စာကြောင်းကိုသာ ရှာပြီး ဖြတ်ထုတ်မည်
+            for line in lines:
+                if "hint" in line.lower() and ("/" in line):
+                    # ဥပမာ - "💎 Hint : /grab kaoru" ဆိုရင် သင်္ကေတနောက်ကဟာကို ယူမည်
+                    parts = line.split(":", 1)
+                    if len(parts) > 1:
+                        final_text = parts[1].strip()
+                        break
+            
+            logger.info(f"🤖 Card Reader မှ Hint ကို ဖြတ်ထုတ်ပြီးပါပြီ: {final_text}")
+            await client.send_message(LAST_CHAT_ID, final_text)
             logger.info(f"🚀 [SUCCESS] Group ({LAST_CHAT_ID}) ထဲသို့ အောင်မြင်စွာ ပို့လိုက်ပါပြီ။")
 
     except FloodWait as e:
