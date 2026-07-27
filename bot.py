@@ -28,30 +28,15 @@ if not API_ID or not API_HASH or not SESSION_STRING:
 
 API_ID = int(API_ID)
 
-# သတ်မှတ်ထားသော Group 3 ခု နှင့် Card Reader Bot ID
+# Target Groups နှင့် Card Reader Bot ID
 TARGET_CHATS = [-1004295330651, -1003315850707, -1003854698282]
 CARD_READER_BOT_ID = 8506436817
 
-# ---------------------------------------------------------
-# MEMORY MANAGEMENT (To prevent memory leaks 24/7)
-# ---------------------------------------------------------
-class LimitedDict(OrderedDict):
-    """Memory မပြည့်စေရန် နောက်ဆုံး Message ၂၀၀ ကိုသာ မှတ်ထားမည့် Dictionary"""
-    def __init__(self, maxsize=200, *args, **kwds):
-        self.maxsize = maxsize
-        super().__init__(*args, **kwds)
+# Forward လုပ်ခဲ့သည့် Message ID နှင့် Group ID များကို မှတ်သားရန်
+forward_history = OrderedDict()
+LAST_CHAT_ID = TARGET_CHATS[0]
 
-    def __setitem__(self, key, value):
-        if key not in self:
-            if len(self) >= self.maxsize:
-                self.popitem(last=False)
-        super().__init__.__setitem__(key, value)
-
-message_origin_map = LimitedDict(maxsize=200)
-
-# ---------------------------------------------------------
-# PYROGRAM CLIENT INITIALIZATION
-# ---------------------------------------------------------
+# Pyrogram Client
 app_client = Client(
     "character_catcher_bot",
     api_id=API_ID,
@@ -60,13 +45,13 @@ app_client = Client(
 )
 
 # ---------------------------------------------------------
-# FLASK KEEP-ALIVE SERVER
+# FLASK KEEP-ALIVE SERVER (Render အတွက်)
 # ---------------------------------------------------------
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def home():
-    return "✨ Upgraded Character Catcher Bot is alive and running!"
+    return "✨ Auto & Hand Character Catcher Bot is Active!"
 
 @flask_app.route('/health')
 def health():
@@ -74,13 +59,12 @@ def health():
 
 def ping_self():
     time.sleep(10)
-    url = os.environ.get("RENDER_EXTERNAL_URL", "https://catcher-16m2.onrender.com")
-    logger.info(f"🔄 Self-ping စတင်ပါပြီ။ URL: {url}")
+    url = os.environ.get("RENDER_EXTERNAL_URL", "https://beta-no7j.onrender.com")
     while True:
         try:
             time.sleep(300)
-            response = requests.get(f"{url}/health", timeout=10)
-        except Exception as e:
+            requests.get(f"{url}/health", timeout=10)
+        except Exception:
             pass
 
 def run_flask():
@@ -90,106 +74,95 @@ def run_flask():
 def auto_restart_system():
     while True:
         time.sleep(50)
-        logger.info("🔄 ၅၀ စက္ခတ်ပြည့်သွားပြီဖြစ်ပါ၍ Script ကို Restart ချနေပါပြီ...")
+        logger.info("🔄 ၅၀ စက္ခတ်ပြည့်၍ Restart ချနေပါသည်...")
         os._exit(0)
 
 # =========================================================
 # PYROGRAM EVENT HANDLERS
 # =========================================================
 
-# ၁။ သတ်မှတ်ထားသော Group (၃) ခုမှ စာများကို ဖတ်ခြင်း (Read All Targeted)
+# ---------------------------------------------------------
+# ၁။ AUTO SYSTEM: Group (၃) ခုမှ Spawn မက်ဆေ့ခ်ျများကို Card Reader ဆီ Auto Forward မည်
+# ---------------------------------------------------------
 @app_client.on_message(filters.chat(TARGET_CHATS) & filters.incoming)
-async def group_message_handler(client, message):
+async def auto_forward_spawns(client, message):
+    global LAST_CHAT_ID
     try:
-        chat_id = message.chat.id
-        text = message.caption or message.text or ""
+        text = (message.caption or message.text or "").lower()
         
-        # Keyword ပါခြင်း (သို့မဟုတ်) ပုံ/ဖိုင် ပါခြင်းကို စစ်ဆေးမည်
-        is_spawn_keyword = any(keyword in text.lower() for keyword in ["spawn", "appeared", "hurry-up", "catch", "grab"])
-        has_media = bool(message.photo or message.document)
+        # ပုံပါလာလျှင် သို့မဟုတ် Spawn စာသားပါလာလျှင် Auto Forward မည်
+        is_spawn = any(kw in text for kw in [
+            "spawn", "waifu", "husbando", "harem", "/catch", "/grab", "appeared"
+        ]) or bool(message.photo)
         
-        # Spawn ဖြစ်နိုင်ချေရှိသမျှ အားလုံးကို ဖမ်းပြီး Forward မည်
-        if is_spawn_keyword or has_media:
-            forwarded_msg = await message.forward(CARD_READER_BOT_ID)
+        if is_spawn:
+            chat_id = message.chat.id
+            LAST_CHAT_ID = chat_id
             
-            if forwarded_msg:
-                message_origin_map[forwarded_msg.id] = chat_id
-            
-            logger.info(f"📤 Group ({chat_id}) မှ မက်ဆေ့ခ်ျကို Card Reader Bot ထံ Forward ပြီးပါပြီ။")
-            await asyncio.sleep(1)  # Spam မဖြစ်အောင် ၁ စက္ကန့် နားမည်
+            # Card Reader Bot ဆီသို့ Auto Forward မည်
+            fwd_msg = await message.forward(CARD_READER_BOT_ID)
+            if fwd_msg:
+                forward_history[fwd_msg.id] = chat_id
+                if len(forward_history) > 50:
+                    forward_history.popitem(last=False)
+                    
+            logger.info(f"⚡ [AUTO] Group ({chat_id}) မှ Spawn ကို Card Reader ဆီ Auto Forward လိုက်ပါပြီ။")
+            await asyncio.sleep(0.5)
 
     except FloodWait as e:
-        logger.warning(f"⚠️ Telegram Rate Limit! စက္ကန့် {e.value} ခန့် စောင့်ပါမည်။")
         await asyncio.sleep(e.value)
     except Exception as e:
-        logger.error(f"❌ Error in group_message_handler: {e}")
+        logger.error(f"❌ Auto Forward Error: {e}")
 
+# ---------------------------------------------------------
+# ၂။ HAND SYSTEM: မိမိကိုယ်တိုင် Hand ဖြင့် Forward လိုက်သော မက်ဆေ့ခ်ျကို မှတ်သားမည်
+# ---------------------------------------------------------
+@app_client.on_message(filters.me & filters.chat(CARD_READER_BOT_ID) & filters.forwarded)
+async def hand_forward_tracker(client, message):
+    global LAST_CHAT_ID
+    try:
+        if message.forward_from_chat and message.forward_from_chat.id in TARGET_CHATS:
+            chat_id = message.forward_from_chat.id
+            LAST_CHAT_ID = chat_id
+            forward_history[message.id] = chat_id
+            logger.info(f"🖐️ [HAND] မိမိကိုယ်တိုင် Group ({chat_id}) မှ Spawn ကို Forward လုပ်လိုက်သည်ကို မှတ်သားလိုက်ပါပြီ။")
+    except Exception as e:
+        logger.error(f"❌ Hand Forward Tracker Error: {e}")
 
-# ၂။ Card Reader Bot ထံမှ စာပြန်လာပါက Auto System ဖြင့် မူရင်း Group သို့ ပြန်ပို့ခြင်း
+# ---------------------------------------------------------
+# ၃။ AUTO-SEND COMMAND: Card Reader မှ ပြန်လာသော /catch, /grab ကို Group ထဲ Auto ပြန်ပို့မည်
+# ---------------------------------------------------------
 @app_client.on_message(filters.chat(CARD_READER_BOT_ID) & filters.incoming)
-async def auto_catch_handler(client, message):
+async def process_card_reader_response(client, message):
+    global LAST_CHAT_ID
     try:
-        target_group = None
+        text = message.text or message.caption or ""
         
-        if message.reply_to_message:
-            replied_id = message.reply_to_message.id
-            target_group = message_origin_map.get(replied_id)
-        
-        # မူရင်း Group မတွေ့ပါက နောက်ဆုံးဝင်ထားသည့် Group သို့ ပို့မည်
-        if not target_group and message_origin_map:
-            target_group = next(reversed(message_origin_map.values()))
-        
-        if not target_group:
-            target_group = TARGET_CHATS[0]
-
-        bot_text = message.text or message.caption or ""
-        
-        if bot_text and ("/catch" in bot_text or "/grab" in bot_text):
-            await client.send_message(target_group, bot_text)
-            logger.info(f"🚀 [AUTO] Group ({target_group}) ထဲသို့ '{bot_text}' ကို ပို့လိုက်ပါပြီ။")
-
+        if "/catch" in text.lower() or "/grab" in text.lower():
+            target_chat = None
+            
+            # Reply မက်ဆေ့ခ်ျဖြစ်ပါက သက်ဆိုင်ရာ Group ကို ရှာမည်
+            if message.reply_to_message and message.reply_to_message.id in forward_history:
+                target_chat = forward_history[message.reply_to_message.id]
+            
+            # မတွေ့ပါက နောက်ဆုံး Forward လုပ်ခဲ့သော Group ID ကို ယူမည်
+            if not target_chat:
+                target_chat = LAST_CHAT_ID
+                
+            await client.send_message(target_chat, text)
+            logger.info(f"🚀 [SENT] Group ({target_chat}) ထဲသို့ '{text}' ကို Auto ပို့လိုက်ပါပြီ။")
+            
     except FloodWait as e:
         await asyncio.sleep(e.value)
     except Exception as e:
-        logger.error(f"❌ Error in auto_catch_handler: {e}")
-
-
-# ၃။ Hand System (ကိုယ်တိုင် Card Reader ဆီမှ စာကို Reply ပြန်ခြင်း)
-# filters.me ထည့်ထားသောကြောင့် မိမိကိုယ်တိုင် Reply ပြန်မှသာ အလုပ်လုပ်မည်ဖြစ်သည်
-@app_client.on_message(filters.me & filters.chat(CARD_READER_BOT_ID) & filters.reply)
-async def hand_catch_handler(client, message):
-    try:
-        replied_msg = message.reply_to_message
-        
-        if replied_msg and replied_msg.from_user and replied_msg.from_user.id == CARD_READER_BOT_ID:
-            user_input = message.text.strip() if message.text else ""
-            
-            if user_input:
-                replied_id = replied_msg.id
-                target_group = message_origin_map.get(replied_id, TARGET_CHATS[0])
-                
-                # / (သို့) ! မပါဘဲ နာမည်သက်သက် ရိုက်ထည့်ပါက Auto ဖြည့်ပေးမည်
-                if not user_input.startswith("/") and not user_input.startswith("!"):
-                    original_text = replied_msg.caption or replied_msg.text or ""
-                    if "grab" in original_text.lower():
-                        final_command = f"/grab {user_input}"
-                    else:
-                        final_command = f"/catch {user_input}"
-                else:
-                    final_command = user_input
-
-                await client.send_message(target_group, final_command)
-                logger.info(f"✍️ [HAND] Group ({target_group}) ထဲသို့ '{final_command}' ကို ပို့လိုက်ပါပြီ။")
-                
-    except Exception as e:
-        logger.error(f"❌ Error in hand_catch_handler: {e}")
+        logger.error(f"❌ Process Response Error: {e}")
 
 # =========================================================
 # MAIN RUNNER
 # =========================================================
 if __name__ == "__main__":
     print("=" * 50)
-    print("✨ Upgraded Character Catcher Userbot စတင်နေပါပြီ...")
+    print("✨ Auto & Hand Character Catcher System Started!")
     print("=" * 50)
 
     threading.Thread(target=run_flask, daemon=True).start()
