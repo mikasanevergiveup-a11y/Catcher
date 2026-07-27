@@ -29,7 +29,7 @@ if not API_ID or not API_HASH or not SESSION_STRING:
 API_ID = int(API_ID)
 
 # Target Groups 3 ခု နှင့် Card Reader Bot ID
-TARGET_CHATS = [-1004295330651, -1003315850707, -1003854698282]
+TARGET_CHATS = [-1001947407820 , -1003854698282 ]
 CARD_READER_BOT_ID = 8506436817
 
 # နောက်ဆုံး Spawn ခဲ့သော (သို့) ကိုယ်တိုင် Forward ခဲ့သော Group ID ကို မှတ်သားရန်
