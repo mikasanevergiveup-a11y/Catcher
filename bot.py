@@ -28,8 +28,11 @@ if not API_ID or not API_HASH or not SESSION_STRING:
 
 API_ID = int(API_ID)
 
-# Target Groups နှင့် Card Reader Bot ID
-TARGET_CHATS = [-1001947407820, -1003854698282]
+# 1. သင့်ရဲ့ Group နှစ်ခု (လိုအပ်ပါက -100 ထည့်ရန် သို့မဟုတ် ကိန်းဂဏန်းအတိုင်း ထည့်ရန်)
+TARGET_CHATS = [-1001947407820, -1003854698282] # သင်အသုံးပြုနေသော Group ID နှစ်ခုကို ဤနေရာတွင် ထည့်ပါ
+
+# 2. Card Spawner Bot IDs များ
+SPAWNER_BOT_IDS = [5934263177, 8307651649, 6212414747, 6157455819]
 CARD_READER_BOT_ID = 8506436817
 
 # နောက်ဆုံး Spawn ခဲ့သော Group ID ကို မှတ်သားရန်
@@ -81,30 +84,32 @@ def auto_restart_system():
 # =========================================================
 
 # 🟢 [TEST COMMAND]
-@app_client.on_message(filters.me & filters.command("ping", prefixes="."))
+@app_client.on_message(filters.me & filters.command("p", prefixes="."))
 async def ping_command(client, message):
     await message.reply_text(f"🏓 **Pong! Bot is perfectly alive.**\n📁 ဒီ Group ရဲ့ ID မှာ: `{message.chat.id}` ဖြစ်ပါတယ်။")
 
-# ၁။ AUTO SYSTEM (Group မှ Card Reader သို့ Auto Forward မည်)
-@app_client.on_message(filters.chat(TARGET_CHATS) & filters.incoming)
+# ၁။ AUTO SYSTEM (သတ်မှတ်ထားသော Group နှစ်ခုထဲရှိ Spawner Bot များမှ ပို့သော Spawn များကိုသာ ဖမ်းမည်)
+@app_client.on_message(filters.chat(TARGET_CHATS) & filters.user(SPAWNER_BOT_IDS) & filters.incoming)
 async def auto_forward_spawns(client, message):
     global LAST_CHAT_ID
     try:
         text = str(message.caption or message.text or "").lower()
         
+        # ပုံများတွင်ပါတတ်သော Spawn Keywords များ
         spawn_keywords = [
             "a character has spawned", 
             "new waifu is here", 
             "new husbando is here",
             "grab using",
-            "catch using"
+            "catch using",
+            "pick using"
         ]
         
         is_spawn = bool(message.photo) and any(kw in text for kw in spawn_keywords)
         
         if is_spawn:
             LAST_CHAT_ID = message.chat.id
-            logger.info(f"⚡ [AUTO] Group ({LAST_CHAT_ID}) မှ Spawn အစစ် တွေ့ရှိပါသည်။ Card Reader ဆီသို့ Forward နေပါပြီ...")
+            logger.info(f"⚡ [AUTO] Group ({LAST_CHAT_ID}) အတွင်းရှိ Spawner Bot မှ Spawn အစစ် တွေ့ရှိပါသည်။ Card Reader ဆီသို့ Forward နေပါပြီ...")
             
             await client.forward_messages(
                 chat_id=CARD_READER_BOT_ID,
@@ -137,19 +142,22 @@ async def send_command_to_group(client, message):
         text = str(message.text or message.caption or "")
         
         if text:
-            final_text = text
+            final_text = None
             lines = text.split("\n")
             
-            # "Hint :" ပါသော စာကြောင်းကိုသာ ရှာပြီး ဖြတ်ထုတ်မည်
+            # "Hint :" ပါသော စာကြောင်းကိုသာ အဓိကရှာမည်
             for line in lines:
                 if "hint" in line.lower() and ("/" in line):
-                    # ဥပမာ - "💎 Hint : /grab kaoru" ဆိုရင် သင်္ကေတနောက်ကဟာကို ယူမည်
                     parts = line.split(":", 1)
                     if len(parts) > 1:
                         final_text = parts[1].strip()
                         break
             
-            logger.info(f"🤖 Card Reader မှ Hint ကို ဖြတ်ထုတ်ပြီးပါပြီ: {final_text}")
+            # အကယ်၍ Hint မတွေ့ပါက ပထမဆုံး စာကြောင်းကို သုံးမည်
+            if not final_text:
+                final_text = lines[0].strip()
+
+            logger.info(f"🤖 Card Reader မှ ဖြတ်ထုတ်ထားသော Hint: {final_text}")
             await client.send_message(LAST_CHAT_ID, final_text)
             logger.info(f"🚀 [SUCCESS] Group ({LAST_CHAT_ID}) ထဲသို့ အောင်မြင်စွာ ပို့လိုက်ပါပြီ။")
 
@@ -172,7 +180,7 @@ async def main():
     except Exception as e:
         logger.warning(f"⚠️ Cache သွင်းယူရာတွင် Error: {e}")
 
-    logger.info("🤖 Bot သည် အပြည့်အဝ အလုပ်လုပ်နေပါပြီ! Spawn များကို စောင့်ကြည့်နေပါသည်...")
+    logger.info("🤖 Bot သည် အပြည့်အဝ အလုပ်လုပ်နေပါပြီ! Group နှစ်ခုကို စောင့်ကြည့်နေပါသည်...")
     await idle()
     await app_client.stop()
 
@@ -190,4 +198,4 @@ if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
-    
+            
