@@ -28,7 +28,7 @@ if not API_ID or not API_HASH or not SESSION_STRING:
 
 API_ID = int(API_ID)
 
-# Target Groups 3 ခု နှင့် Card Reader Bot ID
+# Target Groups (ပေးထားသော Group ID အသစ်များ) နှင့် Card Reader Bot ID
 TARGET_CHATS = [-1001947407820, -1003854698282]
 CARD_READER_BOT_ID = 8506436817
 
@@ -58,6 +58,7 @@ def health():
 
 def ping_self():
     time.sleep(10)
+    # ပေးထားသော Render URL အသစ်ကို အသုံးပြုထားသည်
     url = os.environ.get("RENDER_EXTERNAL_URL", "https://catcher-16m2.onrender.com")
     while True:
         try:
@@ -70,7 +71,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# 🕒 ၃ မိနစ် (၁၈၀ စက္ခတ်) တစ်ခါ Auto Restart ချပေးမည့် Function
+# 🕒 ၃ မိနစ် (၁၈၀ စက္ခန့်) တစ်ခါ Auto Restart ချပေးမည့် Function
 def auto_restart_system():
     time.sleep(180)
     logger.info("🔄 ၃ မိနစ်ပြည့်သွားပါပြီ။ Bot ကို Auto Restart ချနေပါသည်...")
@@ -92,7 +93,6 @@ async def auto_forward_spawns(client, message):
     try:
         text = str(message.caption or message.text or "").lower()
         
-        # 📌 ပုံပါလာပြီး ပုံတွေထဲက Spawn စာသားအမျိုးအစား အားလုံးကို စစ်ဆေးမည်
         spawn_keywords = [
             "a character has spawned", 
             "new waifu is here", 
@@ -107,7 +107,6 @@ async def auto_forward_spawns(client, message):
             LAST_CHAT_ID = message.chat.id
             logger.info(f"⚡ [AUTO] Group ({LAST_CHAT_ID}) မှ Spawn အစစ် တွေ့ရှိပါသည်။ Card Reader ဆီသို့ Forward နေပါပြီ...")
             
-            # Card Reader ဆီသို့ တိုက်ရိုက် Forward မည်
             await client.forward_messages(
                 chat_id=CARD_READER_BOT_ID,
                 from_chat_id=message.chat.id,
@@ -129,7 +128,7 @@ async def hand_tracker(client, message):
             LAST_CHAT_ID = message.forward_from_chat.id
             logger.info(f"🖐️ [HAND] သင်ကိုယ်တိုင် Group ({LAST_CHAT_ID}) မှ Forward လိုက်သည်ကို မှတ်သားထားပါပြီ။")
     except Exception as e:
-    def dummy(): pass
+        logger.error(f"❌ Hand Tracker Error: {e}")
 
 # ၃။ COMMAND ပြန်လည်ပို့ခြင်း (Card Reader မှ ပြန်လာသော စာကို Spawn တဲ့ Group ထဲ ပြန်ပို့မည်)
 @app_client.on_message(filters.chat(CARD_READER_BOT_ID) & filters.incoming)
@@ -180,4 +179,4 @@ if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
-
+    
